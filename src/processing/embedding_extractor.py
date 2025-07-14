@@ -20,7 +20,7 @@ class SpeakerEmbeddingExtractor:
     def __init__(self, model_path=None):
         self.model_path = model_path or Path("models/speechbrain_ecapa")
         self.device = CONFIG.get('diarization_device', 'cuda')
-        self.sample_rate = CONFIG.get('sample_rate', 16000)
+        self.sample_rate = CONFIG.get('sample_rate', 48000)
         
         # Model parameters
         self.model = None

@@ -23,7 +23,7 @@ class AudioPreprocessor:
     - Voice activity detection based enhancement
     """
     
-    def __init__(self, sample_rate: int = 16000):
+    def __init__(self, sample_rate: int = 48000):
         self.sample_rate = sample_rate
         self.nyquist = sample_rate // 2
         
@@ -96,12 +96,10 @@ class AudioPreprocessor:
             
         processed_audio = audio.copy().astype(np.float32)
         
-        # Default processing pipeline
+        # Minimal pipeline – removed unused noise reduction and compression stages
         pipeline_config = {
             'enable_filtering': True,
             'enable_gain_boost': True,
-            'enable_noise_reduction': True,
-            'enable_compression': True,
             'enable_normalization': True
         }
         
@@ -115,8 +113,6 @@ class AudioPreprocessor:
             ('filtering', self._apply_frequency_filtering, pipeline_config['enable_filtering']),
             ('noise_gate', self._apply_noise_gate, True),  # Always apply noise gate
             ('gain_boost', self._apply_adaptive_gain, pipeline_config['enable_gain_boost']),
-            ('noise_reduction', self._apply_noise_reduction, pipeline_config['enable_noise_reduction']),
-            ('compression', self._apply_compression, pipeline_config['enable_compression']),
             ('normalization', self._apply_normalization, pipeline_config['enable_normalization'])
         ]
         
@@ -522,37 +518,23 @@ class AudioPreprocessor:
         return adaptive_threshold
     
     def _apply_vad_smoothing(self, vad_result: np.ndarray) -> np.ndarray:
-        """Apply temporal smoothing to VAD results"""
-        # Fill short gaps (likely speech pauses)
-        min_gap_frames = max(1, int(0.1 * self.sample_rate / self.vad_hop_length))  # 100ms
-        
-        # Forward pass: fill short gaps
-        smoothed = vad_result.copy()
-        gap_start = None
-        
-        for i in range(len(smoothed)):
-            if smoothed[i] and gap_start is not None:
-                # End of gap, check if it was short
-                if i - gap_start <= min_gap_frames:
-                    smoothed[gap_start:i] = True
-                gap_start = None
-            elif not smoothed[i] and gap_start is None:
-                gap_start = i
-        
-        # Remove short voice segments (likely noise)
-        min_voice_frames = max(1, int(0.05 * self.sample_rate / self.vad_hop_length))  # 50ms
-        
-        # Backward pass: remove short segments
-        segment_start = None
-        for i in range(len(smoothed)):
-            if not smoothed[i] and segment_start is not None:
-                # End of voice segment, check if it was short
-                if i - segment_start <= min_voice_frames:
-                    smoothed[segment_start:i] = False
-                segment_start = None
-            elif smoothed[i] and segment_start is None:
-                segment_start = i
-        
+        """Apply temporal smoothing to VAD results using efficient morphological operations"""
+        # Return early if empty
+        if vad_result.size == 0:
+            return vad_result
+
+        # Define structuring element sizes (in frames)
+        min_gap_frames = max(1, int(0.1 * self.sample_rate / self.vad_hop_length))   # 100 ms
+        min_voice_frames = max(1, int(0.05 * self.sample_rate / self.vad_hop_length))  # 50 ms
+
+        # Fill short gaps (closing) then remove short bursts (opening)
+        smoothed = scipy.ndimage.binary_closing(
+            vad_result, structure=np.ones(min_gap_frames, dtype=bool)
+        )
+        smoothed = scipy.ndimage.binary_opening(
+            smoothed, structure=np.ones(min_voice_frames, dtype=bool)
+        )
+
         return smoothed
     
     def enhance_for_whisper(self, audio: np.ndarray) -> np.ndarray:
@@ -622,7 +604,7 @@ class AudioPreprocessor:
 
 
 # Convenience function for quick audio enhancement
-def enhance_audio_for_whisper(audio: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
+def enhance_audio_for_whisper(audio: np.ndarray, sample_rate: int = 48000) -> np.ndarray:
     """
     Quick audio enhancement function optimized for Whisper and distant microphones
     

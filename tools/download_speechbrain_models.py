@@ -34,7 +34,7 @@ def download_ecapa_model():
         
         # Test the model to ensure it works
         print("Testing model...")
-        dummy_input = torch.randn(1, 16000)  # 1 second of audio at 16kHz
+        dummy_input = torch.randn(1, 48000)  # 1 second of audio at 48kHz
         embeddings = model.encode_batch(dummy_input)
         print(f"✓ Model test successful! Embedding shape: {embeddings.shape}")
         

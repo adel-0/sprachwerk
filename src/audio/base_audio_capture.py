@@ -11,7 +11,7 @@ from typing import Optional, Any, Dict, List
 from pathlib import Path
 import numpy as np
 
-from src.core.config import CONFIG
+from src.core.config import get_typed_config
 from src.audio.preprocessing import AudioPreprocessor
 from src.utils.audio_device_manager import AudioDeviceManager
 
@@ -22,24 +22,24 @@ class BaseAudioCapture(ABC):
     """Base class for audio capture with shared functionality and context manager support"""
     
     def __init__(self, sample_rate: Optional[int] = None):
-        self.sample_rate = sample_rate or CONFIG['sample_rate']
-        self.channels = CONFIG['channels']
+        # Get typed configuration
+        config = get_typed_config()
+        
+        # Use provided sample rate or default from config
+        self.sample_rate = sample_rate or config.audio.sample_rate
+        self.channels = config.audio.channels
         
         # State management
         self.is_recording = False
-        self.audio_queue = queue.Queue(maxsize=CONFIG['max_queue_size'])
+        self.audio_queue = queue.Queue(maxsize=config.processing.max_queue_size)
         self.recording_thread = None
         self.audio_buffer = []
         
-        # Audio preprocessing for distant microphones and real-world conditions
+        # Audio preprocessing
         self.preprocessor = AudioPreprocessor(self.sample_rate)
-        self.enable_preprocessing = CONFIG.get('enable_audio_preprocessing', True)
+        self.enable_preprocessing = config.audio_preprocessing.enable_audio_preprocessing
         
-        # Configure preprocessor with pre-processing mode settings
-        if self.enable_preprocessing:
-            self.use_minimal_processing(show_info=False)
-        
-        # Audio device manager for unified device handling
+        # Audio device manager
         self.device_manager = AudioDeviceManager(self.sample_rate)
         
         # Cleanup tracking
@@ -55,17 +55,6 @@ class BaseAudioCapture(ABC):
         """Context manager exit - ensures cleanup"""
         self.cleanup()
     
-    def sync_with_config(self):
-        """Sync audio preprocessing setting with CONFIG"""
-        config_preprocessing = CONFIG.get('enable_audio_preprocessing', True)
-        if self.enable_preprocessing != config_preprocessing:
-            self.enable_preprocessing = config_preprocessing
-            if config_preprocessing:
-                self.use_minimal_processing(show_info=False)
-            else:
-                self.use_raw_audio_mode(show_info=False)
-            logger.info(f"Audio preprocessing synced with CONFIG: {config_preprocessing}")
-    
     def list_audio_devices(self) -> List[Dict[str, Any]]:
         """List available audio input devices"""
         return self.device_manager.list_all_devices()
@@ -73,15 +62,13 @@ class BaseAudioCapture(ABC):
     def set_preprocessing_enabled(self, enabled: bool):
         """Enable or disable audio preprocessing"""
         self.enable_preprocessing = enabled
-        if enabled:
-            self.use_minimal_processing(show_info=True)
-        else:
-            self.use_raw_audio_mode(show_info=True)
+        mode = "enabled" if enabled else "disabled"
+        logger.info(f"Audio preprocessing {mode}")
     
     def configure_preprocessing(self, **kwargs):
         """Configure preprocessing parameters"""
         if self.preprocessor:
-            self.preprocessor.configure(**kwargs)
+            self.preprocessor.set_parameters(**kwargs)
     
     def reset_noise_profile(self):
         """Reset the noise profile for noise reduction"""
@@ -95,13 +82,10 @@ class BaseAudioCapture(ABC):
     
     def use_minimal_processing(self, show_info=True):
         """Configure minimal processing mode for better real-world performance"""
-        if self.preprocessor:
-            # AudioPreprocessor doesn't have set_minimal_processing_mode, so we'll just enable preprocessing
-            # The minimal processing will be handled by the enhance_for_whisper method
-            if show_info:
-                print("🎵 Audio Processing: Minimal pre-processing enabled")
-                print("   • Light noise reduction and normalization")
-                print("   • Optimized for real-world audio conditions")
+        if show_info:
+            print("🎵 Audio Processing: Minimal pre-processing enabled")
+            print("   • Light noise reduction and normalization")
+            print("   • Optimized for real-world audio conditions")
         self.enable_preprocessing = True
     
     def use_raw_audio_mode(self, show_info=True):
@@ -113,10 +97,7 @@ class BaseAudioCapture(ABC):
     
     def get_processing_mode(self) -> str:
         """Get current processing mode description"""
-        if not self.enable_preprocessing:
-            return "Raw Audio (No Processing)"
-        else:
-            return "Minimal Pre-processing"
+        return "Raw Audio (No Processing)" if not self.enable_preprocessing else "Minimal Pre-processing"
     
     def _process_audio(self, audio_data: np.ndarray) -> np.ndarray:
         """Process audio data through preprocessing pipeline"""
@@ -124,7 +105,6 @@ class BaseAudioCapture(ABC):
             return audio_data
         
         try:
-            # Use enhance_for_whisper for minimal processing
             return self.preprocessor.enhance_for_whisper(audio_data)
         except Exception as e:
             logger.warning(f"Audio preprocessing failed: {e}")
@@ -133,18 +113,20 @@ class BaseAudioCapture(ABC):
     def save_audio(self, audio_data: np.ndarray, filename: str) -> Optional[Path]:
         """Save audio data to file"""
         try:
-            from src.core.config import OUTPUT_DIR
+            from src.core.config import get_typed_config
             import scipy.io.wavfile as wavfile
+            
+            config = get_typed_config()
             
             # Ensure filename has .wav extension
             if not filename.endswith('.wav'):
                 filename += '.wav'
             
-            filepath = OUTPUT_DIR / filename
+            filepath = Path(config.output.output_directory) / filename
             
             # Convert to int16 for saving
             if audio_data.dtype != np.int16:
-                if audio_data.dtype == np.float32 or audio_data.dtype == np.float64:
+                if audio_data.dtype in [np.float32, np.float64]:
                     # Convert from float [-1, 1] to int16
                     audio_data = (audio_data * 32767).astype(np.int16)
                 else:

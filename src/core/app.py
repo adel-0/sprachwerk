@@ -108,9 +108,6 @@ class TranscriptionApp:
             
             if audio_source_mode == 'mic':
                 # Traditional microphone recording
-                if hasattr(self.audio_capture, 'sync_with_config'):
-                    self.audio_capture.sync_with_config()
-
                 if not self.audio_capture.select_device():
                     logger.error("Failed to setup audio device")
                     return False
@@ -539,7 +536,7 @@ class TranscriptionApp:
         try:
             # Load audio data for voice signatures
             import librosa
-            audio_data, sample_rate = librosa.load(audio_file, sr=16000)
+            audio_data, sample_rate = librosa.load(audio_file, sr=48000)
             
             # Transcribe the entire file
             print(f"{Fore.YELLOW}Transcribing audio...{Style.RESET_ALL}")

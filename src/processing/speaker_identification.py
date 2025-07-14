@@ -91,7 +91,7 @@ class SpeakerIdentifier:
         self.current_session_mapping: Dict[str, str] = {}
         
         # Audio processing parameters
-        self.sample_rate = CONFIG.get('sample_rate', 16000)
+        self.sample_rate = CONFIG.get('sample_rate', 48000)
         self.frame_length = int(0.025 * self.sample_rate)  # 25ms frames
         self.hop_length = int(0.010 * self.sample_rate)    # 10ms hop
         

@@ -27,7 +27,7 @@ class SpeakerDiarizer:
     def __init__(self):
         # Get configuration
         self.config = CONFIG if CONFIG else {}
-        self.sample_rate = self.config.get('sample_rate', 16000)
+        self.sample_rate = self.config.get('sample_rate', 48000)
         self.min_speakers = self.config.get('min_speakers', 1)
         self.max_speakers = self.config.get('max_speakers', 2)
         
@@ -171,7 +171,7 @@ class SpeakerDiarizer:
                 window_timestamps.append(chunk_timestamp + start_sample / self.sample_rate)
         
         if not windows:
-            logger.warning("No valid windows extracted from audio chunk")
+            logger.debug("No valid windows extracted from audio chunk")
             return []
         
         # Extract embeddings for each window

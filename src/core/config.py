@@ -36,7 +36,7 @@ class ModelConfig:
 @dataclass(frozen=True)
 class AudioConfig:
     """Audio-related configuration"""
-    sample_rate: int = 16000
+    sample_rate: int = 48000
     channels: int = 1
     audio_format: str = 'wav'
     audio_device_index: Optional[int] = None

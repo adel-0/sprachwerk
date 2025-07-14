@@ -730,13 +730,15 @@ class SystemAudioCapture(BaseAudioCapture):
                     # Convert to float32 for processing
                     mixed_audio_float_raw = mixed_audio.astype(np.float32) / 32768.0  # Preserve raw audio
 
-                    # Apply preprocessing on a copy to avoid altering the raw version
-                    mixed_audio_float_proc = mixed_audio_float_raw
+                    # Apply preprocessing ONLY if enabled
+                    mixed_audio_float_proc = mixed_audio_float_raw.copy()
                     if self.enable_preprocessing:
                         try:
-                            mixed_audio_float_proc = self.preprocessor.enhance_for_whisper(mixed_audio_float_proc.copy())
+                            mixed_audio_float_proc = self.preprocessor.enhance_for_whisper(mixed_audio_float_proc)
                         except Exception as e:
                             logger.error(f"Audio preprocessing failed: {e}")
+                            # Fall back to raw audio if preprocessing fails
+                            mixed_audio_float_proc = mixed_audio_float_raw
 
                     if len(mixed_audio_float_proc) > 0:
                         # Accumulate recordings

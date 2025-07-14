@@ -98,8 +98,8 @@ def main():
             
             # Quick test
             recording = sd.rec(
-                int(0.5 * 16000),  # 0.5 second test
-                samplerate=16000,
+                            int(0.5 * 48000),  # 0.5 second test
+            samplerate=48000,
                 channels=1,
                 dtype=np.float32,
                 device=device['index']

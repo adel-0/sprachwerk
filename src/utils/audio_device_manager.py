@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class AudioDeviceManager:
     """Centralized audio device management and testing using pyaudiowpatch"""
     
-    def __init__(self, sample_rate: int = 16000):
+    def __init__(self, sample_rate: int = 48000):
         self.sample_rate = sample_rate
         self.test_duration = 2.0  # Default test duration
         
@@ -246,7 +246,7 @@ class AudioDeviceManager:
                 test_results['error'] = "Device has no input channels"
                 return False, test_results
             
-            # Find supported sample rate
+            # Find supported sample rate - prioritize 48000 Hz for better audio quality
             supported_rates = [48000, 44100, 32000, 22050, 16000]
             sample_rate = None
             channels = min(device_info['maxInputChannels'], 2)
