@@ -5,7 +5,6 @@ Uses pyaudiowpatch for Windows loopback audio recording
 
 import pyaudiowpatch as pyaudio
 import numpy as np
-import sys
 import threading
 import queue
 import logging
@@ -14,7 +13,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict, List
 import time
 
-from src.core.config import CONFIG, OUTPUT_DIR
+from src.core.config import OUTPUT_DIR
 from src.audio.base_audio_capture import BaseAudioCapture
 
 logger = logging.getLogger(__name__)
@@ -25,10 +24,8 @@ class SystemAudioCapture(BaseAudioCapture):
     def __init__(self):
         super().__init__()
         
-        # System audio specific configuration
-        self.recording_threads = []
-        
         # Recording configuration
+        self.recording_threads = []
         self.system_device = None
         self.mic_device = None
         self.recording_mode = 'both'  # 'system', 'mic', or 'both'
@@ -45,85 +42,55 @@ class SystemAudioCapture(BaseAudioCapture):
     
     def list_devices(self) -> Dict[str, List[Dict]]:
         """List all available audio devices with loopback and microphone detection"""
-        devices = {'loopback': [], 'microphone': [], 'all': []}
-        
         try:
-            # Get all devices from AudioDeviceManager
             all_devices = self.device_manager.list_all_devices()
-            devices['all'] = all_devices
-            
-            # Get specialized device lists
-            devices['loopback'] = self.device_manager.get_loopback_devices()
-            devices['microphone'] = self.device_manager.get_microphone_devices()
-            
+            return {
+                'loopback': self.device_manager.get_loopback_devices(),
+                'microphone': self.device_manager.get_microphone_devices(),
+                'all': all_devices
+            }
         except Exception as e:
             logger.error(f"Error listing devices: {e}")
-            
-        return devices
+            return {'loopback': [], 'microphone': [], 'all': []}
+    
+    def _get_device(self, device_index: Optional[int], device_type: str) -> Optional[Dict]:
+        """Generic device selection method"""
+        if device_index is not None:
+            try:
+                all_devices = self.device_manager.list_all_devices()
+                for device in all_devices:
+                    if device['index'] == device_index and device['max_input_channels'] > 0:
+                        logger.info(f"Using {device_type} device [{device_index}]: {device['name']}")
+                        return device
+                logger.warning(f"Device index {device_index} not found or has no input channels")
+                return None
+            except Exception as e:
+                logger.error(f"Error getting device {device_index}: {e}")
+                return None
+        
+        # Auto-detect best device
+        try:
+            device = (self.device_manager.get_best_loopback_device() if device_type == 'loopback' 
+                     else self.device_manager.get_best_microphone_device())
+            if device:
+                logger.info(f"Auto-selected {device_type} device: [{device['index']}] {device['name']}")
+                return device
+            logger.warning(f"No {device_type} device found")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting {device_type} device: {e}")
+            return None
     
     def get_recording_device(self, device_index: Optional[int] = None) -> Optional[Dict]:
         """Get a suitable device for recording system audio (loopback)"""
-        if device_index is not None:
-            # Use specific device index
-            try:
-                all_devices = self.device_manager.list_all_devices()
-                for device in all_devices:
-                    if device['index'] == device_index and device['max_input_channels'] > 0:
-                        logger.info(f"Using system audio device [{device_index}]: {device['name']} ({device['hostapi']})")
-                        return device
-
-                # If we reach here, no matching device was found
-                logger.warning(f"Device index {device_index} not found or has no input channels")
-                return None
-            except Exception as e:
-                logger.error(f"Error getting device {device_index}: {e}")
-                return None
-            
-        # Auto-detect best loopback device
-        try:
-            device = self.device_manager.get_best_loopback_device()
-            if device:
-                logger.info(f"Auto-selected loopback device: [{device['index']}] {device['name']}")
-                return device
-            else:
-                logger.warning("No loopback device found")
-                return None
-        except Exception as e:
-            logger.error(f"Error getting recording device: {e}")
-            return None
+        return self._get_device(device_index, 'loopback')
     
     def get_microphone_device(self, device_index: Optional[int] = None) -> Optional[Dict]:
         """Get a suitable microphone device"""
-        if device_index is not None:
-            # Use specific device index
-            try:
-                all_devices = self.device_manager.list_all_devices()
-                for device in all_devices:
-                    if device['index'] == device_index and device['max_input_channels'] > 0:
-                        logger.info(f"Using microphone device [{device_index}]: {device['name']} ({device['hostapi']})")
-                        return device
-
-                logger.warning(f"Device index {device_index} not found or has no input channels")
-                return None
-            except Exception as e:
-                logger.error(f"Error getting device {device_index}: {e}")
-                return None
-            
-        # Auto-detect best microphone device
-        try:
-            device = self.device_manager.get_best_microphone_device()
-            if device:
-                logger.info(f"Auto-selected microphone device: [{device['index']}] {device['name']}")
-                return device
-            else:
-                logger.warning("No microphone device found")
-                return None
-        except Exception as e:
-            logger.error(f"Error getting microphone device: {e}")
-            return None
+        return self._get_device(device_index, 'microphone')
     
     def set_recording_mode(self, mode: str, system_device_index: Optional[int] = None, 
-                          mic_device_index: Optional[int] = None):
+                          mic_device_index: Optional[int] = None) -> bool:
         """Set recording mode and devices"""
         self.recording_mode = mode
         
@@ -141,30 +108,32 @@ class SystemAudioCapture(BaseAudioCapture):
         
         return True
     
+    def _find_supported_sample_rate(self, p: pyaudio.PyAudio, device: Dict) -> Optional[int]:
+        """Find supported sample rate for device"""
+        supported_rates = [48000, 44100, 32000, 22050, 16000]
+        channels = min(device['max_input_channels'], 2)
+        
+        for rate in supported_rates:
+            try:
+                if p.is_format_supported(rate, 
+                                          input_device=device['index'], 
+                                          input_channels=channels, 
+                                          input_format=pyaudio.paInt16):
+                    return rate
+            except ValueError:
+                continue
+        return None
+    
     def _record_audio_stream(self, p: pyaudio.PyAudio, device: Dict, duration: float, 
                             audio_queue: queue.Queue, stream_name: str):
         """Record audio from a single device"""
         stream = None
         try:
-            # Find supported sample rate
-            supported_rates = [48000, 44100, 32000, 22050, 16000]
-            sample_rate = None
-            channels = min(device['max_input_channels'], 2)
-            
-            for rate in supported_rates:
-                try:
-                    if p.is_format_supported(rate, 
-                                              input_device=device['index'], 
-                                              input_channels=channels, 
-                                              input_format=pyaudio.paInt16):
-                        sample_rate = rate
-                        break
-                except ValueError:
-                    continue
-
+            sample_rate = self._find_supported_sample_rate(p, device)
             if sample_rate is None:
                 raise RuntimeError(f"No supported sample rate found for {device['name']}")
 
+            channels = min(device['max_input_channels'], 2)
             stream = p.open(
                 format=pyaudio.paInt16,
                 channels=channels,
@@ -224,19 +193,9 @@ class SystemAudioCapture(BaseAudioCapture):
         system_rms = np.sqrt(np.mean((system_audio.astype(np.float32) / 32768.0) ** 2))
         mic_rms = np.sqrt(np.mean((mic_audio.astype(np.float32) / 32768.0) ** 2))
         
-        # Avoid division by zero
-        if system_rms < 1e-6:
-            system_rms = 1e-6
-        if mic_rms < 1e-6:
-            mic_rms = 1e-6
-        
-        # Calculate normalization factors
-        system_factor = target_rms / system_rms
-        mic_factor = target_rms / mic_rms
-        
-        # Apply normalization with safety limits
-        system_factor = min(system_factor, 10.0)  # Max 10x amplification
-        mic_factor = min(mic_factor, 10.0)
+        # Avoid division by zero and apply normalization with safety limits
+        system_factor = min(target_rms / max(system_rms, 1e-6), 10.0)
+        mic_factor = min(target_rms / max(mic_rms, 1e-6), 10.0)
         
         # Apply normalization
         system_normalized = (system_audio.astype(np.float32) * system_factor).astype(np.int16)
@@ -249,16 +208,17 @@ class SystemAudioCapture(BaseAudioCapture):
     def _mix_audio_streams(self, system_audio: np.ndarray, mic_audio: np.ndarray, 
                           system_rate: int, mic_rate: int) -> Tuple[np.ndarray, int]:
         """Mix system audio and microphone audio with adjustable gains"""
+        # Handle single audio source cases
         if system_audio is None and mic_audio is None:
             return None, 44100
         
         if system_audio is None:
-            return (mic_audio * self.mic_gain).astype(np.int16) if mic_audio is not None else None, mic_rate
+            return (mic_audio * self.mic_gain).astype(np.int16), mic_rate
         
         if mic_audio is None:
             return (system_audio * self.system_gain).astype(np.int16), system_rate
         
-        # Use the higher sample rate
+        # Mix both streams
         target_rate = max(system_rate, mic_rate)
         
         # Resample if necessary
@@ -268,12 +228,11 @@ class SystemAudioCapture(BaseAudioCapture):
         if mic_rate != target_rate:
             mic_audio = self._resample_audio(mic_audio, mic_rate, target_rate)
         
-        # Ensure same length
+        # Ensure same length and normalize if enabled
         min_length = min(len(system_audio), len(mic_audio))
         system_audio = system_audio[:min_length]
         mic_audio = mic_audio[:min_length]
         
-        # Auto-normalize levels if enabled
         if self.auto_normalize:
             system_audio, mic_audio = self._normalize_audio_levels(system_audio, mic_audio, 
                                                                   target_rms=self.target_level)
@@ -321,13 +280,12 @@ class SystemAudioCapture(BaseAudioCapture):
                 logger.error("No recording threads started")
                 return None
             
-            # Start all threads
+            # Start all threads and wait for completion
             for thread in threads:
                 thread.start()
             
             logger.info(f"Recording for {duration}s...")
             
-            # Wait for all threads to complete
             for thread in threads:
                 thread.join()
             
@@ -393,7 +351,6 @@ class SystemAudioCapture(BaseAudioCapture):
             
             # Ensure proper type/range for saving
             if audio_data.dtype in (np.float32, np.float64):
-                # Clip to valid range and convert to int16 PCM
                 audio_clipped = np.clip(audio_data, -1.0, 1.0)
                 audio_int16 = (audio_clipped * 32767).astype(np.int16)
             else:
@@ -460,7 +417,6 @@ class SystemAudioCapture(BaseAudioCapture):
     
     def cleanup(self):
         """Clean up system audio specific resources"""
-        # Stop recording
         self.is_recording = False
         
         # Wait for recording threads to finish
@@ -469,12 +425,9 @@ class SystemAudioCapture(BaseAudioCapture):
                 thread.join(timeout=1.0)
         
         self.recording_threads.clear()
-        
-        # Clear any remaining data
         self.system_audio_data = None
         self.mic_audio_data = None
         
-        # Call parent cleanup
         super().cleanup()
     
     # Abstract method implementations required by BaseAudioCapture
@@ -500,14 +453,12 @@ class SystemAudioCapture(BaseAudioCapture):
         # Clear any existing data
         self.system_audio_data = None
         self.mic_audio_data = None
-        
-        # Start recording threads based on mode
         self.recording_threads = []
         
         try:
             p = pyaudio.PyAudio()
             
-            # Start system audio recording if needed
+            # Start recording threads based on mode
             if self.recording_mode in ['system', 'both'] and self.system_device:
                 system_thread = threading.Thread(
                     target=self._real_time_record_stream,
@@ -518,7 +469,6 @@ class SystemAudioCapture(BaseAudioCapture):
                 self.recording_threads.append(system_thread)
                 logger.info("Started system audio recording thread")
             
-            # Start microphone recording if needed
             if self.recording_mode in ['mic', 'both'] and self.mic_device:
                 mic_thread = threading.Thread(
                     target=self._real_time_record_stream,
@@ -550,16 +500,13 @@ class SystemAudioCapture(BaseAudioCapture):
     def stop_real_time_recording(self) -> Optional[np.ndarray]:
         """Stop real-time recording and return accumulated audio"""
         if not self.is_recording:
-            logger.debug("Stop recording called but no recording in progress")
-            # Return any accumulated recording if available
-            if len(self.realtime_recording_raw) > 0: # Return raw recording
+            if len(self.realtime_recording_raw) > 0:
                 logger.info(f"Returning accumulated raw recording of {len(self.realtime_recording_raw)} samples")
                 return np.array(self.realtime_recording_raw)
             return None
         
         logger.info("Stopping real-time system audio recording...")
         
-        # Stop recording flag
         self.is_recording = False
         
         # Wait for all recording threads to finish
@@ -570,11 +517,10 @@ class SystemAudioCapture(BaseAudioCapture):
         self.recording_threads.clear()
         
         # Return the complete recording
-        if len(self.realtime_recording_raw) > 0: # Return raw recording
+        if len(self.realtime_recording_raw) > 0:
             recording_duration = len(self.realtime_recording_raw) / self.sample_rate
             logger.info(f"Real-time recording completed: {recording_duration:.1f} seconds, {len(self.realtime_recording_raw)} samples")
             
-            # Check audio quality
             recording_array = np.array(self.realtime_recording_raw)
             max_amplitude = np.max(np.abs(recording_array))
             rms_level = np.sqrt(np.mean(recording_array ** 2))
@@ -596,27 +542,12 @@ class SystemAudioCapture(BaseAudioCapture):
         """Record audio from a single device in real-time"""
         stream = None
         try:
-            # Find supported sample rate
-            supported_rates = [48000, 44100, 32000, 22050, 16000]
-            sample_rate = None
-            channels = min(device['max_input_channels'], 2)
-            
-            for rate in supported_rates:
-                try:
-                    if p.is_format_supported(rate, 
-                                              input_device=device['index'], 
-                                              input_channels=channels, 
-                                              input_format=pyaudio.paInt16):
-                        sample_rate = rate
-                        break
-                except ValueError:
-                    continue
-
+            sample_rate = self._find_supported_sample_rate(p, device)
             if sample_rate is None:
                 logger.error(f"No supported sample rate found for {device['name']}")
                 return
 
-            # Open stream
+            channels = min(device['max_input_channels'], 2)
             stream = p.open(
                 format=pyaudio.paInt16,
                 channels=channels,
@@ -628,39 +559,34 @@ class SystemAudioCapture(BaseAudioCapture):
             
             logger.info(f"Started real-time recording for {stream_name} at {sample_rate}Hz")
             
+            # Initialize buffer for this stream
+            buffer_attr = f'_{stream_name}_buffer'
+            setattr(self, buffer_attr, [])
+            
             # Record continuously until stopped
             while self.is_recording:
                 try:
                     data = stream.read(2048, exception_on_overflow=False)
                     if data:
-                        # Convert to numpy array
                         audio_data = np.frombuffer(data, dtype=np.int16)
                         
                         # Convert to mono if stereo
                         if channels > 1:
                             audio_data = audio_data.reshape(-1, channels).mean(axis=1).astype(np.int16)
 
-                        # Resample to target rate for real-time processing if needed
+                        # Resample to target rate if needed
                         if sample_rate != self.sample_rate:
                             try:
                                 audio_data = self._resample_audio(audio_data, sample_rate, self.sample_rate)
                                 sample_rate = self.sample_rate
                             except Exception as e:
                                 logger.error(f"Resampling failed in real-time stream ({stream_name}): {e}")
-                                # Proceed with original data even if resampling fails
  
                         # Store raw data for this stream
-                        if stream_name == "system_audio":
-                            if not hasattr(self, '_system_audio_buffer'):
-                                self._system_audio_buffer = []
-                            self._system_audio_buffer.extend(audio_data)
-                        elif stream_name == "microphone":
-                            if not hasattr(self, '_mic_audio_buffer'):
-                                self._mic_audio_buffer = []
-                            self._mic_audio_buffer.extend(audio_data)
+                        getattr(self, buffer_attr).extend(audio_data)
                         
                 except Exception as e:
-                    if self.is_recording:  # Only log if we're still supposed to be recording
+                    if self.is_recording:
                         logger.error(f"Error reading from {stream_name}: {e}")
                     break
                     
@@ -696,9 +622,9 @@ class SystemAudioCapture(BaseAudioCapture):
                     system_audio = np.array(self._system_audio_buffer[:chunk_size])
                     self._system_audio_buffer = self._system_audio_buffer[chunk_size:]
                 
-                if hasattr(self, '_mic_audio_buffer') and len(self._mic_audio_buffer) >= chunk_size:
-                    mic_audio = np.array(self._mic_audio_buffer[:chunk_size])
-                    self._mic_audio_buffer = self._mic_audio_buffer[chunk_size:]
+                if hasattr(self, '_microphone_buffer') and len(self._microphone_buffer) >= chunk_size:
+                    mic_audio = np.array(self._microphone_buffer[:chunk_size])
+                    self._microphone_buffer = self._microphone_buffer[chunk_size:]
                 
                 # Mix audio if we have data
                 if system_audio is not None or mic_audio is not None:
@@ -728,22 +654,21 @@ class SystemAudioCapture(BaseAudioCapture):
                         continue  # No data to process yet
                     
                     # Convert to float32 for processing
-                    mixed_audio_float_raw = mixed_audio.astype(np.float32) / 32768.0  # Preserve raw audio
-
-                    # Apply preprocessing ONLY if enabled
+                    mixed_audio_float_raw = mixed_audio.astype(np.float32) / 32768.0
                     mixed_audio_float_proc = mixed_audio_float_raw.copy()
+                    
+                    # Apply preprocessing if enabled
                     if self.enable_preprocessing:
                         try:
                             mixed_audio_float_proc = self.preprocessor.enhance_for_whisper(mixed_audio_float_proc)
                         except Exception as e:
                             logger.error(f"Audio preprocessing failed: {e}")
-                            # Fall back to raw audio if preprocessing fails
                             mixed_audio_float_proc = mixed_audio_float_raw
 
                     if len(mixed_audio_float_proc) > 0:
                         # Accumulate recordings
-                        self.realtime_recording.extend(mixed_audio_float_proc)       # Processed (for ASR)
-                        self.realtime_recording_raw.extend(mixed_audio_float_raw)    # Raw (for saving/playback)
+                        self.realtime_recording.extend(mixed_audio_float_proc)
+                        self.realtime_recording_raw.extend(mixed_audio_float_raw)
 
                         # Push processed chunk for downstream real-time processing
                         try:
@@ -752,7 +677,7 @@ class SystemAudioCapture(BaseAudioCapture):
                             logger.warning("Audio queue full, dropping chunk")
                 
             except Exception as e:
-                if self.is_recording:  # Only log if we're still supposed to be recording
+                if self.is_recording:
                     logger.error(f"Error in mixing loop: {e}")
                 time.sleep(0.1)
         

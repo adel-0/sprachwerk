@@ -127,25 +127,17 @@ class SpeakerIdentifier:
     def load_speakers_database(self):
         """Load speakers database and voice signatures from disk"""
         def load_operation():
-            # Load speakers database
             if self.speakers_db_path.exists():
                 with open(self.speakers_db_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    self.speakers_db = {
-                        speaker_id: SpeakerProfile.from_dict(profile_data)
-                        for speaker_id, profile_data in data.items()
-                    }
+                    self.speakers_db = {speaker_id: SpeakerProfile.from_dict(profile_data) for speaker_id, profile_data in data.items()}
                 logger.info(f"Loaded {len(self.speakers_db)} speaker profiles")
-            
-            # Load voice signatures
             if self.voice_signatures_path.exists():
                 with open(self.voice_signatures_path, 'rb') as f:
                     self.voice_signatures = pickle.load(f)
                 logger.info(f"Loaded {len(self.voice_signatures)} voice signatures")
             return True
-        
-        success = self._handle_database_operation(load_operation, "loading speakers database")
-        if not success:
+        if not self._handle_database_operation(load_operation, "loading speakers database"):
             self.speakers_db = {}
             self.voice_signatures = {}
     
@@ -177,285 +169,125 @@ class SpeakerIdentifier:
     
     def create_voice_signature(self, speaker_segments: List[Dict], audio_data: Optional[np.ndarray] = None) -> Optional[np.ndarray]:
         """Create an audio-based voice signature from speaker segments and audio data"""
-        try:
-            if audio_data is None:
-                logger.warning("No audio data provided for voice signature creation")
-                return None
-            
-            # Filter valid segments and extract audio
-            valid_segments = [seg for seg in speaker_segments 
-                            if seg.get('duration', 0) >= 0.5]
-            
-            if not valid_segments:
-                logger.debug("No valid segments after filtering")
-                return None
-            
-            total_duration = sum(seg.get('duration', 0) for seg in valid_segments)
-            if total_duration < self.min_speech_duration:
-                logger.debug(f"Insufficient speech duration ({total_duration:.1f}s)")
-                return None
-            
-            # Extract audio segments for this speaker
-            speaker_audio_segments = []
-            cumulative_duration = 0
-            
-            for segment in valid_segments:
-                # Stop if we've collected enough audio for signature
-                if cumulative_duration >= self.max_signature_duration:
-                    break
-                    
-                start_sample = int(segment.get('start', 0) * self.sample_rate)
-                end_sample = int(segment.get('end', 0) * self.sample_rate)
-                
-                if start_sample < len(audio_data) and end_sample <= len(audio_data):
-                    segment_audio = audio_data[start_sample:end_sample]
-                    if len(segment_audio) > 0:
-                        speaker_audio_segments.append(segment_audio)
-                        cumulative_duration += len(segment_audio) / self.sample_rate
-            
-            if not speaker_audio_segments:
-                logger.debug("No audio segments extracted")
-                return None
-            
-            # Concatenate all audio segments for this speaker
-            speaker_audio = np.concatenate(speaker_audio_segments)
-            
-            # Limit to max duration for consistency
-            max_samples = int(self.max_signature_duration * self.sample_rate)
-            if len(speaker_audio) > max_samples:
-                speaker_audio = speaker_audio[:max_samples]
-            
-            # Extract acoustic features
-            features = self._extract_acoustic_features(speaker_audio)
-            
-            if features is None or len(features) < 10:
-                logger.debug("Insufficient acoustic features extracted")
-                return None
-            
-            signature = np.array(features, dtype=np.float32)
-            
-            # Per-dimension normalization (more robust than global z-score)
-            signature = self._normalize_features(signature)
-            
-            logger.debug(f"Created audio-based voice signature with {len(features)} features")
-            return signature
-            
-        except Exception as e:
-            logger.error(f"Error creating voice signature: {e}")
+        if audio_data is None:
+            logger.warning("No audio data provided for voice signature creation")
             return None
+        valid_segments = [seg for seg in speaker_segments if seg.get('duration', 0) >= 0.5]
+        if not valid_segments:
+            logger.debug("No valid segments after filtering")
+            return None
+        total_duration = sum(seg.get('duration', 0) for seg in valid_segments)
+        if total_duration < self.min_speech_duration:
+            logger.debug(f"Insufficient speech duration ({total_duration:.1f}s)")
+            return None
+        speaker_audio_segments = []
+        cumulative_duration = 0
+        for segment in valid_segments:
+            if cumulative_duration >= self.max_signature_duration:
+                break
+            start_sample = int(segment.get('start', 0) * self.sample_rate)
+            end_sample = int(segment.get('end', 0) * self.sample_rate)
+            if 0 <= start_sample < end_sample <= len(audio_data):
+                segment_audio = audio_data[start_sample:end_sample]
+                if len(segment_audio) > 0:
+                    speaker_audio_segments.append(segment_audio)
+                    cumulative_duration += len(segment_audio) / self.sample_rate
+        if not speaker_audio_segments:
+            logger.debug("No audio segments extracted")
+            return None
+        speaker_audio = np.concatenate(speaker_audio_segments)
+        max_samples = int(self.max_signature_duration * self.sample_rate)
+        if len(speaker_audio) > max_samples:
+            speaker_audio = speaker_audio[:max_samples]
+        features = self._extract_acoustic_features(speaker_audio)
+        if not features or len(features) < 10:
+            logger.debug("Insufficient acoustic features extracted")
+            return None
+        signature = np.array(features, dtype=np.float32)
+        signature = self._normalize_features(signature)
+        logger.debug(f"Created audio-based voice signature with {len(features)} features")
+        return signature
     
     def _normalize_features(self, features: np.ndarray) -> np.ndarray:
         """Normalize features per dimension for better cross-session consistency"""
-        try:
-            # Handle edge cases
-            if len(features) == 0:
-                return features
-            
-            # Clamp extreme values first
-            features = np.clip(features, -10, 10)
-            
-            # Replace any remaining NaN/inf values
-            features = np.nan_to_num(features, nan=0.0, posinf=1.0, neginf=-1.0)
-            
-            # Simple min-max normalization to [0, 1] range
-            # More stable than z-score for mixed feature types
-            feat_min = np.min(features)
-            feat_max = np.max(features)
-            
-            if feat_max - feat_min > 1e-8:
-                features = (features - feat_min) / (feat_max - feat_min)
-            else:
-                # If all values are the same, set to 0.5
-                features = np.full_like(features, 0.5)
-            
+        if len(features) == 0:
             return features
-            
-        except Exception as e:
-            logger.warning(f"Error normalizing features: {e}")
-            return np.zeros_like(features)
+        features = np.clip(features, -10, 10)
+        features = np.nan_to_num(features, nan=0.0, posinf=1.0, neginf=-1.0)
+        feat_min = np.min(features)
+        feat_max = np.max(features)
+        if feat_max - feat_min > 1e-8:
+            features = (features - feat_min) / (feat_max - feat_min)
+        else:
+            features = np.full_like(features, 0.5)
+        return features
     
     def _extract_acoustic_features(self, audio: np.ndarray) -> Optional[List[float]]:
         """Extract streamlined acoustic features from audio"""
-        try:
-            # Ensure audio is not empty and has sufficient length
-            if len(audio) < self.frame_length:
-                return None
-            
-            # 1. Pitch features (simplified)
-            pitch_features = self._extract_pitch_features(audio)
-            
-            # 2. Spectral features (MFCCs) - most reliable
-            mfcc_features = self._extract_mfcc_features(audio)
-            
-            # 3. Basic spectral characteristics
-            spectral_features = self._extract_spectral_features(audio)
-            
-            # 4. Energy-based features
-            energy_features = self._extract_energy_features(audio)
-            
-            # Combine all features
-            features = pitch_features + mfcc_features + spectral_features + energy_features
-            
-            return features
-            
-        except Exception as e:
-            logger.error(f"Error extracting acoustic features: {e}")
+        if len(audio) < self.frame_length:
             return None
+        features = []
+        features += self._extract_pitch_features(audio)
+        features += self._extract_mfcc_features(audio)
+        features += self._extract_spectral_features(audio)
+        features += self._extract_energy_features(audio)
+        return features
     
     def _extract_pitch_features(self, audio: np.ndarray) -> List[float]:
-        """Extract simplified pitch-related features"""
         try:
-            # Use simpler YIN algorithm instead of pyin for speed and reliability
-            f0 = librosa.yin(
-                audio, 
-                fmin=80,   # Typical human voice range
-                fmax=400,  # Covers most speakers
-                sr=self.sample_rate,
-                frame_length=self.frame_length,
-                hop_length=self.hop_length
-            )
-            
-            # Remove invalid values
+            f0 = librosa.yin(audio, fmin=80, fmax=400, sr=self.sample_rate, frame_length=self.frame_length, hop_length=self.hop_length)
             f0_clean = f0[f0 > 0]
-            
             if len(f0_clean) == 0:
                 return [0.0] * 4
-            
-            # Calculate basic pitch statistics
-            pitch_mean = np.mean(f0_clean)
-            pitch_std = np.std(f0_clean)
-            pitch_median = np.median(f0_clean)
-            pitch_range = np.max(f0_clean) - np.min(f0_clean)
-            
-            return [pitch_mean, pitch_std, pitch_median, pitch_range]
-            
+            return [np.mean(f0_clean), np.std(f0_clean), np.median(f0_clean), np.max(f0_clean) - np.min(f0_clean)]
         except Exception as e:
             logger.warning(f"Error extracting pitch features: {e}")
             return [0.0] * 4
     
     def _extract_mfcc_features(self, audio: np.ndarray) -> List[float]:
-        """Extract Mel-frequency cepstral coefficients"""
         try:
-            # Extract MFCCs - most reliable speaker features
-            mfccs = librosa.feature.mfcc(
-                y=audio,
-                sr=self.sample_rate,
-                n_mfcc=13,
-                n_fft=2048,
-                hop_length=self.hop_length,
-                n_mels=26
-            )
-            
-            # Calculate statistics for each MFCC coefficient
-            mfcc_features = []
-            for i in range(mfccs.shape[0]):
-                mfcc_coeff = mfccs[i, :]
-                mfcc_features.extend([
-                    np.mean(mfcc_coeff),
-                    np.std(mfcc_coeff)
-                ])
-            
-            return mfcc_features
-            
+            mfccs = librosa.feature.mfcc(y=audio, sr=self.sample_rate, n_mfcc=13, n_fft=2048, hop_length=self.hop_length, n_mels=26)
+            return [stat for coeff in mfccs for stat in (np.mean(coeff), np.std(coeff))]
         except Exception as e:
             logger.warning(f"Error extracting MFCC features: {e}")
-            return [0.0] * 26  # 13 MFCCs * 2 statistics
+            return [0.0] * 26
     
     def _extract_spectral_features(self, audio: np.ndarray) -> List[float]:
-        """Extract basic spectral characteristics"""
         try:
-            # Spectral centroid
-            spectral_centroids = librosa.feature.spectral_centroid(
-                y=audio, sr=self.sample_rate, hop_length=self.hop_length
-            )[0]
-            
-            # Spectral rolloff
-            spectral_rolloff = librosa.feature.spectral_rolloff(
-                y=audio, sr=self.sample_rate, hop_length=self.hop_length
-            )[0]
-            
-            # Zero crossing rate
-            zcr = librosa.feature.zero_crossing_rate(
-                audio, frame_length=self.frame_length, hop_length=self.hop_length
-            )[0]
-            
-            # Calculate basic statistics
-            features = [
-                np.mean(spectral_centroids),
-                np.std(spectral_centroids),
-                np.mean(spectral_rolloff),
-                np.std(spectral_rolloff),
-                np.mean(zcr),
-                np.std(zcr)
-            ]
-            
-            return features
-            
+            spectral_centroids = librosa.feature.spectral_centroid(y=audio, sr=self.sample_rate, hop_length=self.hop_length)[0]
+            spectral_rolloff = librosa.feature.spectral_rolloff(y=audio, sr=self.sample_rate, hop_length=self.hop_length)[0]
+            zcr = librosa.feature.zero_crossing_rate(audio, frame_length=self.frame_length, hop_length=self.hop_length)[0]
+            return [np.mean(spectral_centroids), np.std(spectral_centroids), np.mean(spectral_rolloff), np.std(spectral_rolloff), np.mean(zcr), np.std(zcr)]
         except Exception as e:
             logger.warning(f"Error extracting spectral features: {e}")
             return [0.0] * 6
     
     def _extract_energy_features(self, audio: np.ndarray) -> List[float]:
-        """Extract energy-based features"""
         try:
-            # Frame the audio for energy calculation
-            frame_length = self.frame_length
-            hop_length = self.hop_length
-            
-            # Calculate RMS energy
-            rms_energy = librosa.feature.rms(
-                y=audio, frame_length=frame_length, hop_length=hop_length
-            )[0]
-            
-            # Energy statistics
-            energy_mean = np.mean(rms_energy)
-            energy_std = np.std(rms_energy)
-            energy_max = np.max(rms_energy)
-            
-            return [energy_mean, energy_std, energy_max]
-            
+            rms_energy = librosa.feature.rms(y=audio, frame_length=self.frame_length, hop_length=self.hop_length)[0]
+            return [np.mean(rms_energy), np.std(rms_energy), np.max(rms_energy)]
         except Exception as e:
             logger.warning(f"Error extracting energy features: {e}")
             return [0.0] * 3
 
     def calculate_speaker_similarity(self, signature1: np.ndarray, signature2: np.ndarray) -> float:
-        """Calculate similarity between two voice signatures using cosine similarity"""
-        try:
-            if signature1 is None or signature2 is None:
-                return 0.0
-            
-            # Ensure same length
-            min_len = min(len(signature1), len(signature2))
-            if min_len == 0:
-                return 0.0
-                
-            sig1 = signature1[:min_len]
-            sig2 = signature2[:min_len]
-            
-            # Handle any remaining NaN or infinite values
-            sig1 = np.nan_to_num(sig1, nan=0.0, posinf=1.0, neginf=-1.0)
-            sig2 = np.nan_to_num(sig2, nan=0.0, posinf=1.0, neginf=-1.0)
-            
-            # Use cosine similarity as primary measure (most reliable for normalized features)
-            norm1 = np.linalg.norm(sig1)
-            norm2 = np.linalg.norm(sig2)
-            
-            if norm1 > 1e-8 and norm2 > 1e-8:
-                cosine_sim = np.dot(sig1, sig2) / (norm1 * norm2)
-                cosine_sim = max(0.0, min(1.0, cosine_sim))
-                
-                # Apply confidence boost for very similar signatures
-                if cosine_sim > 0.85:
-                    cosine_sim = min(1.0, cosine_sim * 1.05)
-                
-                logger.debug(f"Speaker similarity: {cosine_sim:.3f}")
-                return cosine_sim
-            
+        if signature1 is None or signature2 is None:
             return 0.0
-        
-        except Exception as e:
-            logger.error(f"Error calculating speaker similarity: {e}")
+        min_len = min(len(signature1), len(signature2))
+        if min_len == 0:
             return 0.0
+        sig1 = np.nan_to_num(signature1[:min_len], nan=0.0, posinf=1.0, neginf=-1.0)
+        sig2 = np.nan_to_num(signature2[:min_len], nan=0.0, posinf=1.0, neginf=-1.0)
+        norm1 = np.linalg.norm(sig1)
+        norm2 = np.linalg.norm(sig2)
+        if norm1 > 1e-8 and norm2 > 1e-8:
+            cosine_sim = np.dot(sig1, sig2) / (norm1 * norm2)
+            cosine_sim = max(0.0, min(1.0, cosine_sim))
+            if cosine_sim > 0.85:
+                cosine_sim = min(1.0, cosine_sim * 1.05)
+            logger.debug(f"Speaker similarity: {cosine_sim:.3f}")
+            return cosine_sim
+        return 0.0
     
     def identify_speaker(self, original_speaker: str, speaker_segments: List[Dict], audio_data: Optional[np.ndarray] = None) -> str:
         """
@@ -614,65 +446,34 @@ class SpeakerIdentifier:
         return processed_turns
 
     def _merge_excess_speakers(self, speaker_mapping: Dict[str, str], speaker_segments: Dict[str, List[Dict]]) -> Dict[str, str]:
-        """
-        Simple speaker merging: if we have more speakers than expected, merge the least active ones
-        """
         max_speakers = CONFIG.get('max_speakers', 2)
         unique_speakers = list(set(speaker_mapping.values()))
-        
         if len(unique_speakers) <= max_speakers:
-            return speaker_mapping  # No merging needed
-        
-        # Calculate speaking time for each speaker
+            return speaker_mapping
         speaker_durations = {}
         for orig_speaker, identified_id in speaker_mapping.items():
-            segments = speaker_segments.get(orig_speaker, [])
-            total_duration = sum(seg.get('duration', 0) for seg in segments)
-            
-            if identified_id not in speaker_durations:
-                speaker_durations[identified_id] = 0
-            speaker_durations[identified_id] += total_duration
-        
-        # Sort speakers by speaking time (most active first)
+            total_duration = sum(seg.get('duration', 0) for seg in speaker_segments.get(orig_speaker, []))
+            speaker_durations[identified_id] = speaker_durations.get(identified_id, 0) + total_duration
         sorted_speakers = sorted(speaker_durations.items(), key=lambda x: x[1], reverse=True)
-        
-        # Keep the most active speakers, merge others into them
         keep_speakers = [speaker_id for speaker_id, _ in sorted_speakers[:max_speakers]]
         merge_speakers = [speaker_id for speaker_id, _ in sorted_speakers[max_speakers:]]
-        
         if not merge_speakers:
             return speaker_mapping
-        
         logger.info(f"Merging {len(merge_speakers)} excess speakers into {len(keep_speakers)} main speakers")
-        
-        # Create new mapping
-        updated_mapping = {}
-        for orig_speaker, identified_id in speaker_mapping.items():
-            if identified_id in merge_speakers:
-                # Merge into the most active speaker
-                target_speaker = keep_speakers[0]
-                updated_mapping[orig_speaker] = target_speaker
-                logger.debug(f"Merging speaker {identified_id} into {target_speaker}")
-            else:
-                updated_mapping[orig_speaker] = identified_id
-        
+        target_speaker = keep_speakers[0]
+        updated_mapping = {orig_speaker: (target_speaker if identified_id in merge_speakers else identified_id) for orig_speaker, identified_id in speaker_mapping.items()}
+        for merged_id in merge_speakers:
+            logger.debug(f"Merging speaker {merged_id} into {target_speaker}")
         return updated_mapping
     
     def _update_voice_signature(self, speaker_id: str, new_signature: np.ndarray, confidence: float):
-        """Update existing voice signature with adaptive weighting"""
         if speaker_id not in self.voice_signatures:
             self.voice_signatures[speaker_id] = new_signature
             return
-        
         existing_signature = self.voice_signatures[speaker_id]
-        
-        # Weight based on confidence - higher confidence gets more weight
-        new_weight = 0.2 + (confidence * 0.3)  # 0.2-0.5 range
+        new_weight = 0.2 + (confidence * 0.3)
         existing_weight = 1.0 - new_weight
-        
-        updated_signature = existing_weight * existing_signature + new_weight * new_signature
-        self.voice_signatures[speaker_id] = updated_signature
-        
+        self.voice_signatures[speaker_id] = existing_weight * existing_signature + new_weight * new_signature
         logger.debug(f"Updated voice signature for {speaker_id} (weight: {new_weight:.2f})")
     
     def get_session_statistics(self) -> Dict:

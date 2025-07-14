@@ -167,15 +167,6 @@ class TranscriptionConfig:
     
     def with_mode(self, mode: str) -> 'TranscriptionConfig':
         """Create a new configuration with mode-specific optimizations"""
-        if mode == 'realtime':
-            return self._with_realtime_mode()
-        elif mode == 'batch':
-            return self._with_batch_mode()
-        else:
-            return self
-    
-    def _with_realtime_mode(self) -> 'TranscriptionConfig':
-        """Create configuration optimized for real-time mode"""
         from dataclasses import replace
         
         return replace(
@@ -404,36 +395,23 @@ class ConfigManager:
     
     def load_config(self, mode: str = 'realtime') -> TranscriptionConfig:
         """Load configuration for specified mode with user settings applied"""
-        # Create base configuration
-        config = TranscriptionConfig()
-        
-        # Apply mode-specific optimizations
-        config = config.with_mode(mode)
-        
-        # Load and apply user settings
+        config = TranscriptionConfig().with_mode(mode)
         user_settings = self._load_user_settings()
-        if user_settings:
-            config = config.with_user_settings(user_settings)
-        
-        return config
+        return config.with_user_settings(user_settings) if user_settings else config
     
     def save_user_settings(self, config: TranscriptionConfig) -> bool:
         """Save user settings from configuration"""
         try:
             # Convert to legacy dict and extract persisted settings
             legacy_dict = config.to_legacy_dict()
-            user_settings = {}
-            
-            for key in self._persisted_settings:
-                if key in legacy_dict:
-                    user_settings[key] = legacy_dict[key]
+            user_settings = {k: legacy_dict[k] for k in self._persisted_settings if k in legacy_dict}
             
             # Save to file with nice formatting
             with open(self._user_settings_file, 'w', encoding='utf-8') as f:
                 json.dump(user_settings, f, indent=2, ensure_ascii=False)
             
             return True
-        except (PermissionError, OSError) as e:
+        except Exception as e:
             print(f"⚠️  Warning: Could not save user settings to {self._user_settings_file}: {e}")
             return False
     
@@ -445,7 +423,7 @@ class ConfigManager:
         try:
             with open(self._user_settings_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError, PermissionError):
+        except Exception:
             return None
 
 
@@ -534,7 +512,7 @@ def bulk_update(**kwargs) -> None:
     global CONFIG
     CONFIG.update(kwargs)
     for key, value in kwargs.items():
-        save_user_setting(key, value)
+        CONFIG[key] = value
     save_user_settings_to_file()
 
 
