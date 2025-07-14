@@ -165,6 +165,12 @@ class TranscriptionApp:
         print(f"{Fore.YELLOW}Press Ctrl+C to stop recording and save transcript{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Or type 'q' or 'quit' and press Enter to stop gracefully{Style.RESET_ALL}")
         
+        # Ensure audio devices are configured before we start anything
+        if not self.setup_audio():
+            print(f"{Fore.RED}✗ Audio setup failed. Unable to start real-time transcription.{Style.RESET_ALL}")
+            logger.error("Audio setup failed – aborting real-time mode start")
+            return
+
         # Initialize session file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.session_file = self.formatter.output_dir / f"realtime_session_{timestamp}.txt"
@@ -187,14 +193,35 @@ class TranscriptionApp:
             self.transcriber.start_real_time_processing()
             self.diarizer.start_real_time_processing()
             
-            # Start audio recording
-            self.audio_capture.start_real_time_recording()
-            self.is_running = True
+            # Check audio source mode and start appropriate recording
+            audio_source_mode = CONFIG.get('system_audio_recording_mode', 'mic')
             
-            print(f"{Fore.GREEN}Recording started! Speak into your microphone...{Style.RESET_ALL}")
-            
-            # Processing loop
-            self._real_time_processing_loop()
+            if audio_source_mode in ['system', 'both']:
+                # Use system audio capture for real-time recording
+                source_desc = {
+                    'system': 'system audio',
+                    'both': 'system audio and microphone'
+                }.get(audio_source_mode, 'audio')
+                
+                print(f"{Fore.GREEN}Recording started! Capturing {source_desc}...{Style.RESET_ALL}")
+                
+                # Start system audio recording
+                self.system_audio_capture.start_real_time_recording()
+                self.is_running = True
+                
+                # Use system audio capture for processing loop
+                self._real_time_processing_loop_system_audio()
+                
+            else:
+                # Use traditional microphone recording
+                print(f"{Fore.GREEN}Recording started! Speak into your microphone...{Style.RESET_ALL}")
+                
+                # Start microphone recording
+                self.audio_capture.start_real_time_recording()
+                self.is_running = True
+                
+                # Use traditional processing loop
+                self._real_time_processing_loop()
             
         except KeyboardInterrupt:
             print(f"\n{Fore.YELLOW}Stopping recording...{Style.RESET_ALL}")
@@ -202,8 +229,16 @@ class TranscriptionApp:
             print(f"\n{Fore.RED}Error in real-time mode: {e}{Style.RESET_ALL}")
             logger.error(f"Real-time mode error: {e}")
         finally:
-            # Stop recording and save the complete audio
-            complete_recording = self.audio_capture.stop_real_time_recording()
+            # Stop recording and save the complete audio based on audio source mode
+            audio_source_mode = CONFIG.get('system_audio_recording_mode', 'mic')
+            
+            if audio_source_mode in ['system', 'both']:
+                # Stop system audio recording
+                complete_recording = self.system_audio_capture.stop_real_time_recording()
+            else:
+                # Stop microphone recording
+                complete_recording = self.audio_capture.stop_real_time_recording()
+            
             self.stop_processing()
             
             # Save the complete real-time recording
@@ -211,23 +246,38 @@ class TranscriptionApp:
                 try:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     
-                    # Save both processed and raw audio
-                    raw_recording = getattr(self.audio_capture, 'realtime_recording_raw', None)
-                    if raw_recording and len(raw_recording) > 0:
-                        processed_path, raw_path = self.audio_capture.save_dual_audio(
-                            complete_recording, 
-                            np.array(raw_recording), 
-                            "realtime_recording"
-                        )
-                        print(f"{Fore.GREEN}✓ Audio recordings saved:{Style.RESET_ALL}")
-                        print(f"  📄 Processed: {processed_path}")
-                        print(f"  📄 Raw: {raw_path}")
-                        print(f"{Fore.YELLOW}💡 Compare both files - use raw version if processed sounds distorted{Style.RESET_ALL}")
-                    else:
-                        # Fallback to single file
+                    if audio_source_mode in ['system', 'both']:
+                        # Save system audio recording
                         audio_filename = f"realtime_recording_{timestamp}.wav"
-                        saved_audio_path = self.audio_capture.save_audio(complete_recording, audio_filename)
-                        print(f"{Fore.GREEN}✓ Audio recording saved to: {saved_audio_path}{Style.RESET_ALL}")
+                        saved_audio_path = self.system_audio_capture.save_mixed_audio(complete_recording, audio_filename)
+                        print(f"{Fore.GREEN}✓ System audio recording saved to: {saved_audio_path}{Style.RESET_ALL}")
+                        
+                        # Save separate files if configured
+                        if CONFIG.get('system_audio_save_separate', False):
+                            separate_files = self.system_audio_capture.save_separate_audio_files(f"realtime_recording_{timestamp}")
+                            if separate_files.get('system'):
+                                print(f"  📄 System audio: {separate_files['system']}")
+                            if separate_files.get('microphone'):
+                                print(f"  📄 Microphone: {separate_files['microphone']}")
+                    else:
+                        # Save microphone recording with dual audio support
+                        raw_recording = getattr(self.audio_capture, 'realtime_recording_raw', None)
+                        if raw_recording and len(raw_recording) > 0:
+                            processed_path, raw_path = self.audio_capture.save_dual_audio(
+                                complete_recording, 
+                                np.array(raw_recording), 
+                                "realtime_recording"
+                            )
+                            print(f"{Fore.GREEN}✓ Audio recordings saved:{Style.RESET_ALL}")
+                            print(f"  📄 Processed: {processed_path}")
+                            print(f"  📄 Raw: {raw_path}")
+                            print(f"{Fore.YELLOW}💡 Compare both files - use raw version if processed sounds distorted{Style.RESET_ALL}")
+                        else:
+                            # Fallback to single file
+                            audio_filename = f"realtime_recording_{timestamp}.wav"
+                            saved_audio_path = self.audio_capture.save_audio(complete_recording, audio_filename)
+                            print(f"{Fore.GREEN}✓ Audio recording saved to: {saved_audio_path}{Style.RESET_ALL}")
+                            
                 except Exception as e:
                     logger.error(f"Failed to save real-time recording: {e}")
                     print(f"{Fore.RED}✗ Failed to save audio recording: {e}{Style.RESET_ALL}")
@@ -321,6 +371,60 @@ class TranscriptionApp:
                 logger.error(f"Error in processing loop: {e}")
                 time.sleep(0.1)
     
+    def _real_time_processing_loop_system_audio(self):
+        """Main processing loop for real-time mode with system audio capture"""
+        pending_transcriptions = {}
+        pending_diarizations = {}
+        pending_audio_chunks = {}
+        transcription_time_received = {}
+        stale_threshold = 5  # seconds to wait before falling back without diarization
+
+        while self.is_running and not self.stop_requested:
+            try:
+                # Get audio chunks from system audio capture and send to processors
+                chunk_data = self.system_audio_capture.get_audio_chunk(timeout=0.1)
+                if chunk_data:
+                    audio_chunk, chunk_timestamp = chunk_data
+                    pending_audio_chunks[chunk_timestamp] = audio_chunk
+                    transcription_time_received[chunk_timestamp] = time.time()
+                    self.transcriber.add_audio_chunk(audio_chunk, chunk_timestamp)
+                    self.diarizer.add_audio_chunk(audio_chunk, chunk_timestamp)
+
+                # Process transcription results
+                transcription_result = self.transcriber.get_transcription_result(timeout=0.1)
+                if transcription_result:
+                    ts = transcription_result['chunk_timestamp']
+                    pending_transcriptions[ts] = transcription_result
+
+                # Process diarization results
+                diarization_result = self.diarizer.get_diarization_result(timeout=0.1)
+                if diarization_result:
+                    ts = diarization_result['chunk_timestamp']
+                    pending_diarizations[ts] = diarization_result
+
+                # Align completed chunks
+                self._process_completed_chunks(pending_transcriptions, pending_diarizations, pending_audio_chunks)
+
+                # Fallback: output any transcription older than stale_threshold without diarization
+                current_time = time.time()
+                stale_timestamps = [ts for ts, recv_time in transcription_time_received.items() if current_time - recv_time > stale_threshold and ts in pending_transcriptions and ts not in pending_diarizations]
+                for ts in stale_timestamps:
+                    self._output_transcription_only(pending_transcriptions.pop(ts))
+                    transcription_time_received.pop(ts, None)
+                    pending_audio_chunks.pop(ts, None)
+
+                # Cleanup old pending diarizations as well
+                cutoff_time = current_time - 30
+                pending_diarizations = {ts: result for ts, result in pending_diarizations.items() if ts > cutoff_time}
+                pending_audio_chunks = {ts: chunk for ts, chunk in pending_audio_chunks.items() if ts > cutoff_time}
+                transcription_time_received = {ts: t for ts, t in transcription_time_received.items() if ts > cutoff_time}
+
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                logger.error(f"Error in system audio processing loop: {e}")
+                time.sleep(0.1)
+    
     def _process_completed_chunks(self, transcriptions, diarizations, audio_chunks):
         """Process chunks that have both transcription and diarization results"""
         # Find chunks that have both results
@@ -371,6 +475,11 @@ class TranscriptionApp:
     
     def _record_and_process_batch(self, duration):
         """Record audio and process it in batch mode"""
+        # Make sure audio devices are ready before we start recording
+        if not self.setup_audio():
+            print(f"{Fore.RED}✗ Audio setup failed. Unable to start batch recording.{Style.RESET_ALL}")
+            logger.error("Audio setup failed – aborting batch mode start")
+            return
         try:
             # Get audio source mode from CONFIG
             audio_source_mode = CONFIG.get('system_audio_recording_mode', 'mic')

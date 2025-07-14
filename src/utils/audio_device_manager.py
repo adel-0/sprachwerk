@@ -1,8 +1,9 @@
 """
 Audio Device Manager - Centralized audio device testing and selection
+Uses pyaudiowpatch for Windows loopback audio recording
 """
 
-import sounddevice as sd
+import pyaudiowpatch as pyaudio
 import numpy as np
 import time
 import logging
@@ -21,7 +22,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class AudioDeviceManager:
-    """Centralized audio device management and testing"""
+    """Centralized audio device management and testing using pyaudiowpatch"""
     
     def __init__(self, sample_rate: int = 16000):
         self.sample_rate = sample_rate
@@ -31,19 +32,21 @@ class AudioDeviceManager:
         """List all available audio devices with detailed information"""
         devices = []
         try:
-            sd_devices = sd.query_devices()
-            hostapis = sd.query_hostapis()
+            p = pyaudio.PyAudio()
             
-            for idx, device in enumerate(sd_devices):
-                if device['max_input_channels'] > 0:  # Only input devices
-                    hostapi_name = hostapis[device['hostapi']]['name']
+            for i in range(p.get_device_count()):
+                device = p.get_device_info_by_index(i)
+                if device['maxInputChannels'] > 0:  # Only input devices
+                    host_api = p.get_host_api_info_by_index(device['hostApi'])
                     devices.append({
-                        'index': idx,
+                        'index': i,
                         'name': device['name'],
-                        'max_input_channels': device['max_input_channels'],
-                        'default_samplerate': device['default_samplerate'],
-                        'hostapi': hostapi_name
+                        'max_input_channels': device['maxInputChannels'],
+                        'default_samplerate': device['defaultSampleRate'],
+                        'hostapi': host_api['name']
                     })
+            
+            p.terminate()
         except Exception as e:
             logger.error(f"Error listing audio devices: {e}")
             
@@ -52,6 +55,162 @@ class AudioDeviceManager:
     def get_input_devices(self) -> List[Dict]:
         """Get list of input-capable devices"""
         return [device for device in self.list_all_devices() if device['max_input_channels'] > 0]
+    
+    def get_loopback_devices(self) -> List[Dict]:
+        """Get list of loopback devices for system audio recording"""
+        loopback_devices = []
+        
+        try:
+            p = pyaudio.PyAudio()
+            
+            for i in range(p.get_device_count()):
+                device = p.get_device_info_by_index(i)
+                if device['maxInputChannels'] > 0:
+                    host_api = p.get_host_api_info_by_index(device['hostApi'])
+                    
+                    # Check if this is a loopback device
+                    if '[Loopback]' in device['name'] or 'loopback' in device['name'].lower():
+                        loopback_devices.append({
+                            'index': i,
+                            'name': device['name'],
+                            'max_input_channels': device['maxInputChannels'],
+                            'default_samplerate': device['defaultSampleRate'],
+                            'hostapi': host_api['name']
+                        })
+            
+            p.terminate()
+        except Exception as e:
+            logger.error(f"Error getting loopback devices: {e}")
+            
+        return loopback_devices
+    
+    def get_microphone_devices(self) -> List[Dict]:
+        """Get list of microphone devices"""
+        microphone_devices = []
+        
+        try:
+            p = pyaudio.PyAudio()
+            
+            for i in range(p.get_device_count()):
+                device = p.get_device_info_by_index(i)
+                if device['maxInputChannels'] > 0:
+                    host_api = p.get_host_api_info_by_index(device['hostApi'])
+                    device_name = device['name'].lower()
+                    
+                    # Check if this is a microphone device (not loopback, not stereo mix)
+                    if ('[loopback]' not in device_name and 
+                        'stereo mix' not in device_name and
+                        ('microphone' in device_name or 'mic' in device_name)):
+                        
+                        microphone_devices.append({
+                            'index': i,
+                            'name': device['name'],
+                            'max_input_channels': device['maxInputChannels'],
+                            'default_samplerate': device['defaultSampleRate'],
+                            'hostapi': host_api['name']
+                        })
+            
+            p.terminate()
+        except Exception as e:
+            logger.error(f"Error getting microphone devices: {e}")
+            
+        return microphone_devices
+    
+    def get_best_loopback_device(self) -> Optional[Dict]:
+        """Get the best loopback device for system audio recording"""
+        try:
+            p = pyaudio.PyAudio()
+            
+            # Look for WASAPI loopback devices first (preferred)
+            for i in range(p.get_device_count()):
+                device = p.get_device_info_by_index(i)
+                if device['maxInputChannels'] > 0 and '[Loopback]' in device['name']:
+                    host_api = p.get_host_api_info_by_index(device['hostApi'])
+                    if host_api['name'] == 'Windows WASAPI':
+                        logger.info(f"Found WASAPI loopback device: [{i}] {device['name']}")
+                        p.terminate()
+                        return {
+                            'index': i,
+                            'name': device['name'],
+                            'max_input_channels': device['maxInputChannels'],
+                            'default_samplerate': device['defaultSampleRate'],
+                            'hostapi': host_api['name']
+                        }
+            
+            # Fallback to any loopback device
+            for i in range(p.get_device_count()):
+                device = p.get_device_info_by_index(i)
+                if device['maxInputChannels'] > 0 and '[Loopback]' in device['name']:
+                    host_api = p.get_host_api_info_by_index(device['hostApi'])
+                    logger.info(f"Found loopback device: [{i}] {device['name']}")
+                    p.terminate()
+                    return {
+                        'index': i,
+                        'name': device['name'],
+                        'max_input_channels': device['maxInputChannels'],
+                        'default_samplerate': device['defaultSampleRate'],
+                        'hostapi': host_api['name']
+                    }
+            
+            logger.warning("No loopback device found")
+            p.terminate()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting best loopback device: {e}")
+            return None
+    
+    def get_best_microphone_device(self) -> Optional[Dict]:
+        """Get the best microphone device"""
+        try:
+            p = pyaudio.PyAudio()
+            
+            # Look for WASAPI microphone devices first (preferred)
+            for i in range(p.get_device_count()):
+                device = p.get_device_info_by_index(i)
+                if (device['maxInputChannels'] > 0 and 
+                    '[Loopback]' not in device['name'] and 
+                    'stereo mix' not in device['name'].lower() and
+                    ('microphone' in device['name'].lower() or 'mic' in device['name'].lower())):
+                    
+                    host_api = p.get_host_api_info_by_index(device['hostApi'])
+                    if host_api['name'] == 'Windows WASAPI':
+                        logger.info(f"Found WASAPI microphone device: [{i}] {device['name']}")
+                        p.terminate()
+                        return {
+                            'index': i,
+                            'name': device['name'],
+                            'max_input_channels': device['maxInputChannels'],
+                            'default_samplerate': device['defaultSampleRate'],
+                            'hostapi': host_api['name']
+                        }
+            
+            # Fallback to any microphone device
+            for i in range(p.get_device_count()):
+                device = p.get_device_info_by_index(i)
+                if (device['maxInputChannels'] > 0 and 
+                    '[Loopback]' not in device['name'] and 
+                    'stereo mix' not in device['name'].lower() and
+                    ('microphone' in device['name'].lower() or 'mic' in device['name'].lower())):
+                    
+                    host_api = p.get_host_api_info_by_index(device['hostApi'])
+                    logger.info(f"Found microphone device: [{i}] {device['name']}")
+                    p.terminate()
+                    return {
+                        'index': i,
+                        'name': device['name'],
+                        'max_input_channels': device['maxInputChannels'],
+                        'default_samplerate': device['defaultSampleRate'],
+                        'hostapi': host_api['name']
+                    }
+            
+            logger.warning("No microphone device found")
+            p.terminate()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting best microphone device: {e}")
+            return None
     
     def test_device(self, device_index: int, duration: float = None) -> Tuple[bool, Dict]:
         """
@@ -72,50 +231,72 @@ class AudioDeviceManager:
             'working': False
         }
         
+        p = None
+        stream = None
         try:
+            p = pyaudio.PyAudio()
+            
             # Get device info
-            device_info = sd.query_devices(device_index)
+            device_info = p.get_device_info_by_index(device_index)
             test_results['device_name'] = device_info['name']
-            test_results['max_channels'] = device_info['max_input_channels']
+            test_results['max_channels'] = device_info['maxInputChannels']
             
             # Check if device has input capabilities
-            if device_info['max_input_channels'] <= 0:
+            if device_info['maxInputChannels'] <= 0:
                 test_results['error'] = "Device has no input channels"
                 return False, test_results
             
-            # Store original device and set test device
-            original_device = sd.default.device[0]
-            sd.default.device[0] = device_index
+            # Find supported sample rate
+            supported_rates = [48000, 44100, 32000, 22050, 16000]
+            sample_rate = None
+            channels = min(device_info['maxInputChannels'], 2)
             
-            try:
-                # Quick connectivity test first
-                quick_recording = sd.rec(
-                    int(0.5 * self.sample_rate),
-                    samplerate=self.sample_rate,
-                    channels=1,
-                    dtype=np.float32,
-                    device=device_index
-                )
-                sd.wait()
+            for rate in supported_rates:
+                try:
+                    if p.is_format_supported(rate, 
+                                              input_device=device_index, 
+                                              input_channels=channels, 
+                                              input_format=pyaudio.paInt16):
+                        sample_rate = rate
+                        break
+                except ValueError:
+                    continue
+
+            if sample_rate is None:
+                test_results['error'] = "No supported sample rate found"
+                return False, test_results
                 
-                # Check for data corruption
-                if np.any(np.isnan(quick_recording)) or np.any(np.isinf(quick_recording)):
-                    test_results['error'] = "Device returned corrupted data (NaN/Inf values)"
-                    return False, test_results
+            # Test recording
+            stream = p.open(
+                format=pyaudio.paInt16,
+                channels=channels,
+                rate=sample_rate,
+                input=True,
+                frames_per_buffer=2048,
+                input_device_index=device_index
+            )
+            
+            frames = []
+            total_chunks = int(duration * sample_rate / 2048)
+            
+            for _ in range(total_chunks):
+                data = stream.read(2048, exception_on_overflow=False)
+                frames.append(data)
+
+            if frames:
+                audio_data = b''.join(frames)
+                recording = np.frombuffer(audio_data, dtype=np.int16)
                 
-                # Full test recording
-                recording = sd.rec(
-                    int(duration * self.sample_rate),
-                    samplerate=self.sample_rate,
-                    channels=1,
-                    dtype=np.float32,
-                    device=device_index
-                )
-                sd.wait()
+                # Convert to mono if stereo
+                if channels > 1:
+                    recording = recording.reshape(-1, channels).mean(axis=1).astype(np.int16)
+                
+                # Convert to float for analysis
+                recording_float = recording.astype(np.float32) / 32768.0
                 
                 # Analyze the recording
-                max_amplitude = np.max(np.abs(recording))
-                rms_amplitude = np.sqrt(np.mean(recording**2))
+                max_amplitude = np.max(np.abs(recording_float))
+                rms_amplitude = np.sqrt(np.mean(recording_float**2))
                 
                 test_results['max_amplitude'] = float(max_amplitude)
                 test_results['rms_amplitude'] = float(rms_amplitude)
@@ -131,10 +312,9 @@ class AudioDeviceManager:
                     test_results['working'] = False
                     test_results['signal_quality'] = 'none'
                     test_results['error'] = "No signal detected"
-                
-            finally:
-                # Restore original device
-                sd.default.device[0] = original_device
+            else:
+                test_results['error'] = "No audio data recorded"
+                test_results['working'] = False
                 
         except Exception as e:
             error_msg = str(e)
@@ -154,6 +334,14 @@ class AudioDeviceManager:
             else:
                 test_results['error_type'] = 'unknown'
                 test_results['suggestion'] = "Try restarting audio service or using different device"
+                
+        finally:
+            if stream:
+                if stream.is_active():
+                    stream.stop_stream()
+                stream.close()
+            if p:
+                p.terminate()
         
         return test_results['working'], test_results
     
@@ -192,3 +380,32 @@ class AudioDeviceManager:
         """Automatically select the best working device"""
         best_device = self.find_best_device()
         return best_device['index'] if best_device else None
+    
+    def print_device_list(self):
+        """Print a formatted list of all available devices"""
+        print("\n--- Available Audio Devices ---")
+        
+        all_devices = self.list_all_devices()
+        loopback_devices = self.get_loopback_devices()
+        microphone_devices = self.get_microphone_devices()
+        
+        print("Input Devices:")
+        for device in all_devices:
+            print(f"  [{device['index']}] {device['name']}")
+            print(f"      Channels: {device['max_input_channels']}, Rate: {device['default_samplerate']}, API: {device['hostapi']}")
+            
+            if device in loopback_devices:
+                print("      *** LOOPBACK DEVICE (System Audio) ***")
+            elif device in microphone_devices:
+                print("      *** MICROPHONE DEVICE ***")
+            print()
+        
+        if loopback_devices:
+            print("*** LOOPBACK DEVICES FOUND (for system audio) ***")
+            for device in loopback_devices:
+                print(f"  [{device['index']}] {device['name']}")
+        
+        if microphone_devices:
+            print("*** MICROPHONE DEVICES FOUND ***")
+            for device in microphone_devices:
+                print(f"  [{device['index']}] {device['name']}")

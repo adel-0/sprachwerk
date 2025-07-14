@@ -1,8 +1,8 @@
 # sprachwerk
 
-A real-time and batch speech transcription application with speaker diarization, built using OpenAI's Whisper and pyannote.audio. Perfect for meetings, interviews, lectures, and any multi-speaker audio content.
+A real-time and batch voice transcription engine with speaker diarization, built using OpenAI's Whisper and SpeechBrain ECAPA-TDNN. Perfect for integrating speech-to-text capabilities with speaker identification into applications, services, and workflows.
 
-## ✨ Features
+## ✨ Core Features
 
 - **Multiple Processing Modes:**
   - Real-time transcription with live speaker identification
@@ -16,7 +16,7 @@ A real-time and batch speech transcription application with speaker diarization,
   - Support for various audio formats and devices
 
 - **Speaker Diarization:**
-  - Choice between modern SpeechBrain ECAPA-TDNN and traditional pyannote-audio backends
+  - Modern SpeechBrain ECAPA-TDNN embeddings for speaker identification
   - Automatic speaker detection and identification
   - Consistent speaker naming across sessions
   - Support for 1-10 speakers
@@ -29,52 +29,46 @@ A real-time and batch speech transcription application with speaker diarization,
   - Language-specific optimization
   - Support for 100+ languages
 
-- **User-Friendly Interface:**
-  - Interactive configuration menu
-  - Settings confirmation before starting
-  - Real-time visual feedback
+- **Engine Architecture:**
+  - Modular design for easy integration
+  - Processing pipeline with clear interfaces
+  - Real-time and batch processing modes
   - Comprehensive error handling and diagnostics
 
 - **Output Formats:**
-  - Real-time console output with timestamps
-  - Saved transcripts in TXT format with speaker summary
-     - Complete audio recordings
-   - Detailed processing logs
+  - Real-time transcription results with timestamps
+  - Speaker-labeled transcripts in TXT format
+  - Complete audio recordings with metadata
+  - Detailed processing logs and statistics
 
-## 🔧 Diarization Backend Configuration
+## 🔧 Diarization Technology
 
-sprachwerk now supports two diarization backends:
+sprachwerk uses modern SpeechBrain ECAPA-TDNN embeddings for speaker diarization:
 
-### SpeechBrain ECAPA-TDNN (Default)
-- **Advantages:**
-  - Modern embedding-based approach
-  - Fast inference with GPU acceleration
-  - Works completely offline
-  - No HuggingFace token required
-  - Configurable clustering algorithms
-  - Apache 2.0 license
+### SpeechBrain ECAPA-TDNN (Primary)
+- **Modern embedding-based approach** for superior accuracy
+- **Fast inference** with GPU acceleration
+- **Works completely offline** - no external API calls required
+- **No authentication required** - no HuggingFace token needed
+- **Configurable clustering algorithms** (AgglomerativeClustering, DBSCAN)
+- **Apache 2.0 license** for commercial use
+- **Real-time processing** optimized for live transcription
 
-- **Configuration:**
-  - Select in Settings → Diarization Backend
-  - Clustering algorithms: AgglomerativeClustering (default), DBSCAN
-  - Adjustable window length and clustering thresholds
-
-### pyannote-audio (Traditional)
-- **Advantages:**
-  - Mature and well-tested pipeline
-  - Integrated voice activity detection
-  - Proven performance on benchmarks
-
-- **Requirements:**
-  - HuggingFace authentication token
-  - May require accepting model terms
+### Configuration Options
+- Clustering algorithms: AgglomerativeClustering (default), DBSCAN
+- Adjustable window length and clustering thresholds
+- Adaptive speaker count detection
+- Custom similarity thresholds
 
 ### Model Management
 - Models are automatically downloaded and cached locally
 - Run `python tools/download_speechbrain_models.py` to pre-download models
 - Models stored in `models/speechbrain_ecapa/` directory
+- No external dependencies for core functionality
 
 ## 🚀 Quick Start
+
+### As an Engine
 
 1. **Installation:**
    ```bash
@@ -83,77 +77,97 @@ sprachwerk now supports two diarization backends:
    pip install -r requirements.txt
    ```
 
-   Note: The project now uses SpeechBrain ECAPA-TDNN for speaker diarization by default, which provides better performance without requiring HuggingFace authentication.
-
-2. **Run the application:**
+2. **Command Line Usage:**
    ```bash
+   # Interactive mode (default)
    python main.py
+   
+   # Batch mode - record 30 seconds then process
+   python main.py --mode batch --duration 30
+   
+   # Real-time mode
+   python main.py --mode realtime
+   
+   # Process existing audio file
+   python main.py --mode batch --file audio.wav
+   
+   # With language and speaker constraints
+   python main.py -l "en de" -s "2-3" --mode batch
+   
+   # Use specific audio device
+   python main.py -i 1 --mode realtime
+   
+   # Show available audio devices
+   python main.py --help-devices
    ```
 
-3. **Configure your settings:**
-   - Select your recording mode (real-time, batch, or file processing)
-   - Choose your audio device
-   - Set language preferences
-   - Configure speaker count
-   - Select diarization backend (SpeechBrain or pyannote-audio)
-   - Review and confirm settings before starting
+### Interactive Application
 
-## 🏗️ Project Structure
+The engine includes an interactive application for direct use:
 
-The codebase is organized into three main modules:
+```bash
+python main.py
+```
 
-- **`src/audio/`** - Audio capture and preprocessing
-- **`src/processing/`** - Transcription, diarization, and alignment
+The interactive interface provides:
+- Configuration menu for audio devices and processing settings
+- Real-time visual feedback during processing
+- Session management and output organization
+
+## 🏗️ Engine Architecture
+
+The sprachwerk engine is organized into modular components:
+
+- **`src/audio/`** - Audio capture and preprocessing pipeline
+- **`src/processing/`** - Transcription, diarization, and alignment engines
 - **`src/utils/`** - Helper utilities and configuration management
+- **`src/core/`** - Core engine coordination and configuration
 
 ## 📋 System Requirements
 
 - Python 3.8 or higher
 - CUDA-compatible GPU (recommended for faster processing)
-- Microphone access for real-time transcription
-- HuggingFace account (for speaker diarization models)
+- 4GB+ GPU memory for optimal performance
+- Microphone access for real-time transcription (optional)
 
-## 🔧 Configuration
+## 🎯 Integration Use Cases
 
-The application provides an interactive menu system that guides you through:
+- **Business Applications:** Meeting transcription services
+- **Media Processing:** Podcast and interview analysis
+- **Research Platforms:** Audio data processing pipelines
+- **Accessibility Tools:** Real-time captioning systems
+- **Content Management:** Audio indexing and search
+- **Call Centers:** Conversation analysis and quality assurance
 
-- **Recording Mode Selection:** Choose between real-time, batch, or file processing
-- **Audio Device Configuration:** Automatic detection or manual selection
-- **Language Settings:** Auto-detect or specify target languages
-- **Speaker Configuration:** Set expected number of speakers
-- **Settings Confirmation:** Review all settings before starting transcription
+## 🔍 Processing Pipeline
 
-## 🎯 Use Cases
+The engine implements a sophisticated processing pipeline:
 
-- **Business Meetings:** Real-time transcription with speaker identification
-- **Interviews:** Batch processing with high accuracy
-- **Lectures:** Long-form content processing
-- **Podcasts:** Multi-speaker content analysis
-- **Research:** Audio data processing and analysis
+1. **Audio Capture/Loading** - Multi-format audio input handling
+2. **Preprocessing** - Noise reduction and audio enhancement
+3. **Transcription** - Whisper-based speech-to-text with word timestamps
+4. **Speaker Embedding** - SpeechBrain ECAPA-TDNN feature extraction
+5. **Clustering** - Advanced speaker identification and grouping
+6. **Alignment** - Precise word-to-speaker assignment
+7. **Output Generation** - Formatted results with speaker labels
 
-## 🔍 Troubleshooting
+## 📁 Output Management
 
-The application includes comprehensive error handling and diagnostics:
+All transcription results are organized in the `outputs/` directory:
+- Session-based transcript organization
+- Speaker-labeled text files with timestamps
+- Complete audio recordings with processing metadata
+- Detailed logs and performance statistics
+- JSON format results for programmatic access
 
-- **Audio Issues:** Automatic device testing and fallback options
-- **Quality Monitoring:** Real-time audio quality assessment
-- **Processing Errors:** Detailed error messages and recovery suggestions
-- **Performance Tracking:** Real-time factor monitoring for optimization
+## 🔧 Optional Dependencies
 
-## 📁 Output
+Enhanced features available with additional packages:
 
-All transcripts and recordings are saved to the `outputs/` directory:
-- Real-time session transcripts with speaker identification
-- Batch processing results with detailed summaries
-- Complete audio recordings (processed and raw versions)
-- Processing logs and statistics
-
-## 🔧 Optional Features
-
-Some features require additional dependencies:
-
-- **System Audio Recording** (Windows): Install `PyAudioWPatch>=0.2.12`
-- **Colored Terminal Output**: Install `colorama>=0.4.0`
-- **Environment File Support**: Install `python-dotenv>=1.0.0`
+- **System Audio Recording** (Windows): `PyAudioWPatch>=0.2.12`
+- **Enhanced Terminal Output**: `colorama>=0.4.0`
+- **Environment Configuration**: `python-dotenv>=1.0.0`
 
 ---
+
+*sprachwerk - Powering the next generation of voice-enabled applications*
