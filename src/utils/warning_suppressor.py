@@ -42,6 +42,10 @@ def setup_logging_suppressions():
     warnings.filterwarnings("ignore", message=".*speechbrain.pretrained.*deprecated.*")
     warnings.filterwarnings("ignore", message=".*Module 'speechbrain.pretrained' was deprecated.*")
     
+    # Suppress torch.cuda.amp warnings
+    warnings.filterwarnings("ignore", message=".*torch.cuda.amp.custom_fwd.*deprecated.*")
+    warnings.filterwarnings("ignore", category=FutureWarning, message=".*torch.cuda.amp.custom_fwd.*")
+    
     # Suppress ctranslate2 pkg_resources warning
     warnings.filterwarnings("ignore", message=".*pkg_resources.*deprecated.*")
     warnings.filterwarnings("ignore", category=UserWarning, message=".*pkg_resources.*")

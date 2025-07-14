@@ -310,8 +310,8 @@ class WhisperTranscriber:
                 vad_filter=self.vad_filter,
                 vad_parameters=dict(
                     threshold=self.vad_threshold,
-                    min_speech_duration_ms=250,
-                    min_silence_duration_ms=500
+                    min_speech_duration_ms=100,  # Reduced from 250ms for shorter utterances
+                    min_silence_duration_ms=200  # Reduced from 500ms for less aggressive filtering
                 ) if self.vad_filter else None,
                 language=self.language,  # Auto-detect or use specified language
                 task="transcribe",
@@ -402,8 +402,8 @@ class WhisperTranscriber:
                     vad_filter=self.vad_filter,
                     vad_parameters=dict(
                         threshold=self.vad_threshold,
-                        min_speech_duration_ms=250,
-                        min_silence_duration_ms=500
+                        min_speech_duration_ms=100,  # Reduced from 250ms for shorter utterances
+                        min_silence_duration_ms=200  # Reduced from 500ms for less aggressive filtering
                     ) if self.vad_filter else None,
                     language=None,  # Force auto-detection for each chunk
                     task="transcribe",

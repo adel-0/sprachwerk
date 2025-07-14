@@ -26,6 +26,10 @@ def get_single_keypress(prompt, valid_choices, allow_enter_for_default=False, de
             # Get single character input
             key = msvcrt.getch().decode('utf-8').lower()
             
+            # Handle Ctrl+C (ASCII 3)
+            if ord(key) == 3:  # Ctrl+C
+                raise KeyboardInterrupt
+            
             # Handle Enter key for default choice
             if allow_enter_for_default and key == '\r' and default_choice:
                 print(f"\n{Fore.GREEN}✓ Using default: {default_choice}{Style.RESET_ALL}")
@@ -40,7 +44,7 @@ def get_single_keypress(prompt, valid_choices, allow_enter_for_default=False, de
                 print(f"\n{Fore.RED}Invalid choice. Please select from: {', '.join(valid_choices)}{Style.RESET_ALL}")
                 print(prompt, end='', flush=True)
                 
-        except (KeyboardInterrupt, EOFError):
+        except (EOFError, KeyboardInterrupt):
             print(f"\n{Fore.YELLOW}Cancelled{Style.RESET_ALL}")
             return None
         except UnicodeDecodeError:

@@ -58,13 +58,14 @@ tmp/
 *.flac
 
 # Model cache (comment out if you want to cache models)
-# .cache/
-# models/
+.cache/
+models/
 
 # Output files (comment out if you want to track outputs)
 outputs/*.txt
 outputs/*.json
 outputs/*.srt
+outputs/*.pkl
 !outputs/.gitkeep
 
 # User settings (keep private)

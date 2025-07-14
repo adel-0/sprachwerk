@@ -29,11 +29,11 @@ class SpeakerManager:
             try:
                 self._show_speaker_management_menu()
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-7):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4', '5', '6', '7']
+                    f"\n{Fore.CYAN}Select option (1-6, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '4', '5', '6', '0']
                 )
                 
-                if choice is None or choice == '7':  # User cancelled or exit
+                if choice is None or choice == '0':  # User cancelled or exit
                     print(f"{Fore.YELLOW}Returning to main menu...{Style.RESET_ALL}")
                     break
                 elif choice == '1':
@@ -85,7 +85,7 @@ class SpeakerManager:
         print(f"     {Fore.WHITE}   • Database maintenance and cleanup{Style.RESET_ALL}")
         print(f"  6. {Fore.GREEN}📊 Export Speaker Report{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Generate detailed speaker analysis{Style.RESET_ALL}")
-        print(f"  7. {Fore.RED}🔙 Back to Main Menu{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🔙 Back to Main Menu{Style.RESET_ALL}")
 
     def _list_speakers(self):
         """List all speakers with their information"""
@@ -497,11 +497,11 @@ class SpeakerManager:
             try:
                 self._show_database_management_menu()
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-5):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4', '5']
+                    f"\n{Fore.CYAN}Select option (1-4, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '4', '0']
                 )
                 
-                if choice is None or choice == '5':  # User cancelled or back
+                if choice is None or choice == '0':  # User cancelled or back
                     break
                 elif choice == '1':
                     self._cleanup_old_speakers()
@@ -532,7 +532,7 @@ class SpeakerManager:
         print(f"     {Fore.WHITE}   • WARNING: Permanently delete all speaker data{Style.RESET_ALL}")
         print(f"  4. {Fore.CYAN}💾 Backup Database{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Create a backup of speaker database{Style.RESET_ALL}")
-        print(f"  5. {Fore.YELLOW}🔙 Back to Speaker Management{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🔙 Back to Speaker Management{Style.RESET_ALL}")
 
     def _cleanup_old_speakers(self):
         """Clean up old or inactive speakers"""
@@ -545,14 +545,14 @@ class SpeakerManager:
         print(f"  2. {Fore.BLUE}Remove speakers with < 30 seconds speaking time{Style.RESET_ALL}")
         print(f"  3. {Fore.BLUE}Remove speakers not seen in last 30 days{Style.RESET_ALL}")
         print(f"  4. {Fore.BLUE}Custom cleanup criteria{Style.RESET_ALL}")
-        print(f"  5. {Fore.YELLOW}🔙 Back{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🔙 Back{Style.RESET_ALL}")
         
         choice = get_single_keypress(
-            f"\n{Fore.CYAN}Select cleanup option (1-5):{Style.RESET_ALL} ",
-            ['1', '2', '3', '4', '5']
+            f"\n{Fore.CYAN}Select cleanup option (1-4, 0 to go back):{Style.RESET_ALL} ",
+            ['1', '2', '3', '4', '0']
         )
         
-        if choice is None or choice == '5':
+        if choice is None or choice == '0':
             return
         
         try:

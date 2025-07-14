@@ -4,10 +4,11 @@ Provides comprehensive settings management and mode selection
 """
 
 import logging
+import msvcrt
 from pathlib import Path
 from colorama import Fore, Style
 
-from src.core.config import CONFIG, set_mode, save_user_setting, save_user_settings_to_file
+from src.core.config import CONFIG, set_mode, save_user_setting, save_user_settings_to_file, DiarizationBackend
 from src.utils.cli_helpers import apply_language_setting, apply_speaker_setting
 from src.utils.audio_device_manager import AudioDeviceManager
 from src.utils.speaker_manager import SpeakerManager
@@ -39,8 +40,8 @@ class InteractiveMenu:
             try:
                 self._show_quick_start_menu()
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-5):{Style.RESET_ALL} ", 
-                    ['1', '2', '3', '4', '5']
+                    f"\n{Fore.CYAN}Select option (1-4, 0 to exit):{Style.RESET_ALL} ", 
+                    ['1', '2', '3', '4', '0']
                 )
                 
                 if choice is None:  # User cancelled
@@ -76,7 +77,7 @@ class InteractiveMenu:
                 elif choice == '4':
                     # Settings menu
                     self._comprehensive_settings_menu()
-                elif choice == '5':
+                elif choice == '0':
                     print(f"{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
                     break
                     
@@ -109,7 +110,7 @@ class InteractiveMenu:
         print(f"     {Fore.WHITE}   • Process pre-recorded audio files{Style.RESET_ALL}")
         print(f"  4. {Fore.CYAN}⚙️ Settings{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Configuration options{Style.RESET_ALL}")
-        print(f"  5. {Fore.RED}🚪 Exit{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🚪 Exit{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Quit application{Style.RESET_ALL}")
         
     def _display_current_settings(self):
@@ -171,6 +172,15 @@ class InteractiveMenu:
         print(f"  🎤 Audio Device: {Fore.GREEN}{device_info}{Style.RESET_ALL}")
         print(f"  🎵 Audio Processing: {Fore.GREEN}{processing_mode}{Style.RESET_ALL}")
         print(f"  🔊 Audio Source: {Fore.GREEN}{audio_source_display}{Style.RESET_ALL}")
+        
+        # Diarization backend setting
+        backend_str = CONFIG.get('diarization_backend', 'speechbrain')
+        backend_display = {
+            'speechbrain': 'SpeechBrain ECAPA-TDNN',
+            'pyannote': 'pyannote-audio'
+        }.get(backend_str, 'SpeechBrain ECAPA-TDNN')
+        
+        print(f"  🔧 Diarization: {Fore.GREEN}{backend_display}{Style.RESET_ALL}")
     
 
     
@@ -293,38 +303,37 @@ class InteractiveMenu:
     
     def _audio_device_menu(self):
         """Audio device selection menu"""
-        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🎤 AUDIO DEVICE SELECTION{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        
-        # List available input devices
-        device_manager = AudioDeviceManager()
-        input_devices = device_manager.list_all_devices()
-        
-        if not input_devices:
-            print(f"{Fore.RED}No input devices available!{Style.RESET_ALL}")
-            return
-        
-        print(f"\n{Fore.YELLOW}Available input devices:{Style.RESET_ALL}")
-        for device in input_devices:
-            device_idx = device['index']
-            current = " (CURRENT)" if CONFIG.get('audio_device_index') == device_idx else ""
-            print(f"  {device_idx}: {Fore.WHITE}{device['name']}{current}{Style.RESET_ALL}")
-        
-        print(f"\n{Fore.YELLOW}Options:{Style.RESET_ALL}")
-        print(f"  1. {Fore.GREEN}Auto-detect device{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Let system choose best available device{Style.RESET_ALL}")
-        print(f"  2. {Fore.BLUE}Select specific device{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Choose from available input devices{Style.RESET_ALL}")
-        print(f"  3. {Fore.CYAN}Test device{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Test audio input from selected device{Style.RESET_ALL}")
-        print(f"  4. {Fore.YELLOW}🔙 Back to main menu{Style.RESET_ALL}")
-        
         while True:
+            print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}🎤 AUDIO DEVICE SELECTION{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+            
+            # List available input devices
+            device_manager = AudioDeviceManager()
+            input_devices = device_manager.list_all_devices()
+            
+            if not input_devices:
+                print(f"{Fore.RED}No input devices available!{Style.RESET_ALL}")
+                return
+            
+            print(f"\n{Fore.YELLOW}Available input devices:{Style.RESET_ALL}")
+            for device in input_devices:
+                device_idx = device['index']
+                print(f"  {device_idx}: {Fore.WHITE}{device['name']}{Style.RESET_ALL}")
+            
+            print(f"\n{Fore.YELLOW}Options:{Style.RESET_ALL}")
+            print(f"  1. {Fore.GREEN}Auto-detect device{Style.RESET_ALL}")
+            print(f"     {Fore.WHITE}   • Let system choose best available device{Style.RESET_ALL}")
+            print(f"  2. {Fore.BLUE}Select specific device{Style.RESET_ALL}")
+            print(f"     {Fore.WHITE}   • Choose from available input devices{Style.RESET_ALL}")
+            print(f"  3. {Fore.CYAN}Test device{Style.RESET_ALL}")
+            print(f"     {Fore.WHITE}   • Test audio input from selected device{Style.RESET_ALL}")
+            print(f"  0. {Fore.YELLOW}🔙 Back to main menu{Style.RESET_ALL}")
+            
             try:
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-4):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4']
+                    f"\n{Fore.CYAN}Select option (1-3, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '0']
                 )
                 
                 if choice is None:  # User cancelled
@@ -341,7 +350,8 @@ class InteractiveMenu:
                     break
                 elif choice == '3':
                     self._test_audio_device(input_devices)
-                elif choice == '4':
+                    # Continue loop to redisplay menu after testing
+                elif choice == '0':
                     break
                     
             except (EOFError, KeyboardInterrupt):
@@ -396,6 +406,7 @@ class InteractiveMenu:
                     
                     # Test audio input for 3 seconds
                     print(f"{Fore.CYAN}Recording for 3 seconds... Speak into your microphone!{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}Press Ctrl+C to cancel recording{Style.RESET_ALL}")
                     try:
                         duration = 3
                         sample_rate = 44100
@@ -416,6 +427,9 @@ class InteractiveMenu:
                         else:
                             print(f"  {Fore.RED}Very low/no audio detected - check microphone connection{Style.RESET_ALL}")
                             
+                    except KeyboardInterrupt:
+                        print(f"\n{Fore.YELLOW}Recording cancelled by user{Style.RESET_ALL}")
+                        break
                     except Exception as e:
                         print(f"{Fore.RED}Test failed: {e}{Style.RESET_ALL}")
                     
@@ -429,6 +443,7 @@ class InteractiveMenu:
                         
                         # Test the specific device (same logic as above)
                         print(f"{Fore.CYAN}Recording for 3 seconds... Speak into your microphone!{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Press Ctrl+C to cancel recording{Style.RESET_ALL}")
                         try:
                             duration = 3
                             sample_rate = 44100
@@ -449,6 +464,9 @@ class InteractiveMenu:
                             else:
                                 print(f"  {Fore.RED}Very low/no audio detected - check microphone connection{Style.RESET_ALL}")
                                 
+                        except KeyboardInterrupt:
+                            print(f"\n{Fore.YELLOW}Recording cancelled by user{Style.RESET_ALL}")
+                            break
                         except Exception as e:
                             print(f"{Fore.RED}Test failed: {e}{Style.RESET_ALL}")
                         
@@ -463,7 +481,7 @@ class InteractiveMenu:
     
     def _start_transcription(self):
         """Start the transcription process"""
-        self.app.run_realtime_mode()
+        self.app.run_real_time_mode()
     
     def _audio_quality_menu(self):
         """Audio quality settings menu"""
@@ -478,13 +496,13 @@ class InteractiveMenu:
         print(f"  2. {Fore.GREEN}Pre-processing (Recommended){Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Noise reduction, normalization, click removal{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Better transcription accuracy{Style.RESET_ALL}")
-        print(f"  3. {Fore.YELLOW}🔙 Back to main menu{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🔙 Back to main menu{Style.RESET_ALL}")
         
         while True:
             try:
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select quality mode (1-3):{Style.RESET_ALL} ",
-                    ['1', '2', '3']
+                    f"\n{Fore.CYAN}Select quality mode (1-2, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '0']
                 )
                 
                 if choice is None:  # User cancelled
@@ -507,7 +525,7 @@ class InteractiveMenu:
                     print(f"{Fore.GREEN}✓ Pre-processing mode enabled and saved{Style.RESET_ALL}")
                     print(f"{Fore.YELLOW}💡 Essential cleanup applied for natural sound{Style.RESET_ALL}")
                     return
-                elif choice == '3':
+                elif choice == '0':
                     return
                     
             except (EOFError, KeyboardInterrupt):
@@ -519,32 +537,28 @@ class InteractiveMenu:
         print(f"{Fore.CYAN}🔊 AUDIO SOURCE SELECTION{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         
-        current_mode = CONFIG.get('system_audio_recording_mode', 'mic')
-        
         print(f"\n{Fore.YELLOW}Audio Source Options:{Style.RESET_ALL}")
-        print(f"  1. {Fore.GREEN}Microphone Only{Style.RESET_ALL} {'(CURRENT)' if current_mode == 'mic' else ''}")
+        print(f"  1. {Fore.GREEN}Microphone Only{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Record from microphone/input device{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Best for meetings, interviews, voice notes{Style.RESET_ALL}")
-        print(f"  2. {Fore.BLUE}System Audio Only{Style.RESET_ALL} {'(CURRENT)' if current_mode == 'system' else ''}")
+        print(f"  2. {Fore.BLUE}System Audio Only{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Record computer's audio output{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Perfect for transcribing videos, calls, music{Style.RESET_ALL}")
-        print(f"  3. {Fore.MAGENTA}Both (System + Microphone){Style.RESET_ALL} {'(CURRENT)' if current_mode == 'both' else ''}")
+        print(f"  3. {Fore.MAGENTA}Both (System + Microphone){Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Record both system audio and microphone{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Ideal for video calls, gaming, commentary{Style.RESET_ALL}")
-        print(f"  4. {Fore.CYAN}ℹ️  System Audio Info{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Learn about system audio recording{Style.RESET_ALL}")
-        print(f"  5. {Fore.YELLOW}⚙️ Advanced System Audio Settings{Style.RESET_ALL}")
+        print(f"  4. {Fore.YELLOW}⚙️ Advanced System Audio Settings{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Configure system audio devices and settings{Style.RESET_ALL}")
-        print(f"  6. {Fore.YELLOW}🔙 Back to main menu{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🔙 Back to main menu{Style.RESET_ALL}")
         
         while True:
             try:
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select audio source (1-6):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4', '5', '6']
+                    f"\n{Fore.CYAN}Select audio source (1-4, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '4', '0']
                 )
                 
-                if choice is None or choice == '6':  # User cancelled or back
+                if choice is None or choice == '0':  # User cancelled or back
                     break
                 elif choice == '1':
                     # Microphone only
@@ -571,77 +585,51 @@ class InteractiveMenu:
                     print(f"{Fore.YELLOW}💡 Will record both system audio and microphone{Style.RESET_ALL}")
                     break
                 elif choice == '4':
-                    self._show_system_audio_info()
-                elif choice == '5':
                     self._system_audio_advanced_menu()
-                elif choice == '6':
-                    break
+                    # Continue loop to redisplay audio source menu after advanced settings
                     
             except (EOFError, KeyboardInterrupt):
                 break
     
-    def _show_system_audio_info(self):
-        """Show information about system audio recording"""
-        print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}ℹ️  SYSTEM AUDIO RECORDING INFO{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        
-        print(f"\n{Fore.YELLOW}What is System Audio Recording?{Style.RESET_ALL}")
-        print(f"  • Records the audio that your computer is playing")
-        print(f"  • Captures sound from applications, videos, music, calls")
-        print(f"  • Does NOT record your microphone (unless combined mode)")
-        
-        print(f"\n{Fore.YELLOW}Perfect for:{Style.RESET_ALL}")
-        print(f"  • Transcribing YouTube videos, podcasts, webinars")
-        print(f"  • Converting audio/video files to text")
-        print(f"  • Recording online meetings (Zoom, Teams, etc.)")
-        print(f"  • Capturing game audio, music, or any computer sound")
-        
-        print(f"\n{Fore.YELLOW}Technical Details:{Style.RESET_ALL}")
-        print(f"  • Uses Windows WASAPI (Windows Audio Session API)")
-        print(f"  • Captures audio at the system level")
-        print(f"  • High quality, low latency recording")
-        print(f"  • Automatically handles different audio formats")
-        
-        print(f"\n{Fore.GREEN}Press any key to continue...{Style.RESET_ALL}")
-        msvcrt.getch()
-    
+
     def _system_audio_advanced_menu(self):
         """Advanced system audio configuration menu"""
-        print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}⚙️  ADVANCED SYSTEM AUDIO SETTINGS{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        
-        print(f"\n{Fore.YELLOW}Advanced Options:{Style.RESET_ALL}")
-        print(f"  1. {Fore.BLUE}📋 List System Audio Devices{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • View all available system audio devices{Style.RESET_ALL}")
-        print(f"  2. {Fore.GREEN}🎛️ Configure System Audio Devices{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Select specific system audio devices{Style.RESET_ALL}")
-        print(f"  3. {Fore.MAGENTA}🔊 Configure Audio Gains{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Adjust system and microphone volume levels{Style.RESET_ALL}")
-        print(f"  4. {Fore.CYAN}📊 Configure Audio Normalization{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Set audio level balancing options{Style.RESET_ALL}")
-        print(f"  5. {Fore.YELLOW}🔙 Back to audio source menu{Style.RESET_ALL}")
-        
         while True:
+            print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}⚙️  ADVANCED SYSTEM AUDIO SETTINGS{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+            
+            print(f"\n{Fore.YELLOW}Advanced Options:{Style.RESET_ALL}")
+            print(f"  1. {Fore.BLUE}📋 List System Audio Devices{Style.RESET_ALL}")
+            print(f"     {Fore.WHITE}   • View all available system audio devices{Style.RESET_ALL}")
+            print(f"  2. {Fore.GREEN}🎛️ Configure System Audio Devices{Style.RESET_ALL}")
+            print(f"     {Fore.WHITE}   • Select specific system audio devices{Style.RESET_ALL}")
+            print(f"  3. {Fore.MAGENTA}🔊 Configure Audio Gains{Style.RESET_ALL}")
+            print(f"     {Fore.WHITE}   • Adjust system and microphone volume levels{Style.RESET_ALL}")
+            print(f"  4. {Fore.CYAN}📊 Configure Audio Normalization{Style.RESET_ALL}")
+            print(f"     {Fore.WHITE}   • Set audio level balancing options{Style.RESET_ALL}")
+            print(f"  0. {Fore.YELLOW}🔙 Back to audio source menu{Style.RESET_ALL}")
+            
             try:
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-5):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4', '5']
+                    f"\n{Fore.CYAN}Select option (1-4, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '4', '0']
                 )
                 
-                if choice is None or choice == '5':  # User cancelled or back
+                if choice is None or choice == '0':  # User cancelled or back
                     break
                 elif choice == '1':
                     self._list_system_audio_devices()
+                    # Continue loop to redisplay menu after viewing devices
                 elif choice == '2':
                     self._configure_system_audio_devices()
+                    # Continue loop to redisplay menu after configuring devices
                 elif choice == '3':
                     self._configure_audio_gains()
+                    # Continue loop to redisplay menu after configuring gains
                 elif choice == '4':
                     self._configure_normalization()
-                elif choice == '5':
-                    break
+                    # Continue loop to redisplay menu after configuring normalization
                     
             except (EOFError, KeyboardInterrupt):
                 break
@@ -671,19 +659,24 @@ class InteractiveMenu:
             
             if output_devices:
                 for device in output_devices:
-                    current = " (CURRENT)" if CONFIG.get('system_audio_device_index') == device['index'] else ""
-                    print(f"  {device['index']:2d}: {Fore.WHITE}{device['name']}{current}{Style.RESET_ALL}")
+                    print(f"  {device['index']:2d}: {Fore.WHITE}{device['name']}{Style.RESET_ALL}")
                     print(f"      {Fore.CYAN}Channels: {device['channels']}, Sample Rate: {device['sample_rate']:.0f} Hz{Style.RESET_ALL}")
             else:
                 print(f"{Fore.RED}No output devices found!{Style.RESET_ALL}")
             
             print(f"\n{Fore.GREEN}Press any key to continue...{Style.RESET_ALL}")
-            msvcrt.getch()
+            try:
+                msvcrt.getch()
+            except KeyboardInterrupt:
+                pass
             
         except Exception as e:
             print(f"{Fore.RED}Error listing devices: {e}{Style.RESET_ALL}")
             print(f"{Fore.GREEN}Press any key to continue...{Style.RESET_ALL}")
-            msvcrt.getch()
+            try:
+                msvcrt.getch()
+            except KeyboardInterrupt:
+                pass
     
     def _configure_system_audio_devices(self):
         """Configure system audio device selection"""
@@ -708,27 +701,29 @@ class InteractiveMenu:
             if not output_devices:
                 print(f"{Fore.RED}No output devices available!{Style.RESET_ALL}")
                 print(f"{Fore.GREEN}Press any key to continue...{Style.RESET_ALL}")
-                msvcrt.getch()
+                try:
+                    msvcrt.getch()
+                except KeyboardInterrupt:
+                    pass
                 return
             
             print(f"\n{Fore.YELLOW}Available Output Devices:{Style.RESET_ALL}")
             for device in output_devices:
-                current = " (CURRENT)" if CONFIG.get('system_audio_device_index') == device['index'] else ""
-                print(f"  {device['index']:2d}: {Fore.WHITE}{device['name']}{current}{Style.RESET_ALL}")
+                print(f"  {device['index']:2d}: {Fore.WHITE}{device['name']}{Style.RESET_ALL}")
             
             print(f"\n{Fore.YELLOW}Options:{Style.RESET_ALL}")
             print(f"  1. {Fore.GREEN}Auto-detect system audio device{Style.RESET_ALL}")
             print(f"  2. {Fore.BLUE}Select specific device{Style.RESET_ALL}")
-            print(f"  3. {Fore.YELLOW}🔙 Back{Style.RESET_ALL}")
+            print(f"  0. {Fore.YELLOW}🔙 Back{Style.RESET_ALL}")
             
             while True:
                 try:
                     choice = get_single_keypress(
-                        f"\n{Fore.CYAN}Select option (1-3):{Style.RESET_ALL} ",
-                        ['1', '2', '3']
+                        f"\n{Fore.CYAN}Select option (1-2, 0 to go back):{Style.RESET_ALL} ",
+                        ['1', '2', '0']
                     )
                     
-                    if choice is None or choice == '3':  # User cancelled or back
+                    if choice is None or choice == '0':  # User cancelled or back
                         break
                     elif choice == '1':
                         CONFIG['system_audio_device_index'] = None
@@ -759,7 +754,10 @@ class InteractiveMenu:
         except Exception as e:
             print(f"{Fore.RED}Error configuring devices: {e}{Style.RESET_ALL}")
             print(f"{Fore.GREEN}Press any key to continue...{Style.RESET_ALL}")
-            msvcrt.getch()
+            try:
+                msvcrt.getch()
+            except KeyboardInterrupt:
+                pass
     
     def _configure_audio_gains(self):
         """Configure audio gain settings"""
@@ -781,16 +779,16 @@ class InteractiveMenu:
         print(f"     {Fore.WHITE}   • Adjust volume level of microphone{Style.RESET_ALL}")
         print(f"  3. {Fore.BLUE}Reset to Defaults{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Set both gains to 1.0x (no change){Style.RESET_ALL}")
-        print(f"  4. {Fore.YELLOW}🔙 Back{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🔙 Back{Style.RESET_ALL}")
         
         while True:
             try:
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-4):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4']
+                    f"\n{Fore.CYAN}Select option (1-3, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '0']
                 )
                 
-                if choice is None or choice == '4':  # User cancelled or back
+                if choice is None or choice == '0':  # User cancelled or back
                     break
                 elif choice == '1':
                     # Configure system audio gain
@@ -854,16 +852,16 @@ class InteractiveMenu:
         print(f"     {Fore.WHITE}   • Set desired audio level in dB{Style.RESET_ALL}")
         print(f"  3. {Fore.BLUE}Reset to Defaults{Style.RESET_ALL}")
         print(f"     {Fore.WHITE}   • Enable normalization at -20.0 dB{Style.RESET_ALL}")
-        print(f"  4. {Fore.YELLOW}🔙 Back{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🔙 Back{Style.RESET_ALL}")
         
         while True:
             try:
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-4):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4']
+                    f"\n{Fore.CYAN}Select option (1-3, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '0']
                 )
                 
-                if choice is None or choice == '4':  # User cancelled or back
+                if choice is None or choice == '0':  # User cancelled or back
                     break
                 elif choice == '1':
                     # Toggle normalization
@@ -977,15 +975,17 @@ class InteractiveMenu:
             print(f"     {Fore.WHITE}   • Choose system audio, microphone, or both{Style.RESET_ALL}")
             print(f"  6. {Fore.YELLOW}🎭 Speaker Management{Style.RESET_ALL}")
             print(f"     {Fore.WHITE}   • Rename speakers, merge duplicates, manage database{Style.RESET_ALL}")
-            print(f"  7. {Fore.GREEN}🔙 Back to Main Menu{Style.RESET_ALL}")
+            print(f"  7. {Fore.RED}🔧 Diarization Backend{Style.RESET_ALL}")
+            print(f"     {Fore.WHITE}   • Choose between pyannote and SpeechBrain diarization{Style.RESET_ALL}")
+            print(f"  0. {Fore.YELLOW}🔙 Back to Main Menu{Style.RESET_ALL}")
             
             try:
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-7):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4', '5', '6', '7']
+                    f"\n{Fore.CYAN}Select option (1-7, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '4', '5', '6', '7', '0']
                 )
                 
-                if choice is None or choice == '7':  # User cancelled or back
+                if choice is None or choice == '0':  # User cancelled or back
                     break
                 elif choice == '1':
                     self._language_selection_menu()
@@ -999,6 +999,89 @@ class InteractiveMenu:
                     self._audio_source_menu()
                 elif choice == '6':
                     self._speaker_management_menu()
+                elif choice == '7':
+                    self._diarization_backend_menu()
                     
             except (EOFError, KeyboardInterrupt):
-                break 
+                break
+    
+    def _diarization_backend_menu(self):
+        """Diarization backend selection menu"""
+        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🔧 DIARIZATION BACKEND SELECTION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}Diarization Backend Options:{Style.RESET_ALL}")
+        print(f"  1. {Fore.GREEN}SpeechBrain ECAPA-TDNN{Style.RESET_ALL}")
+        print(f"     {Fore.WHITE}   • Modern embedding-based approach{Style.RESET_ALL}")
+        print(f"     {Fore.WHITE}   • Fast and accurate speaker separation{Style.RESET_ALL}")
+        print(f"     {Fore.WHITE}   • Works offline without HuggingFace token{Style.RESET_ALL}")
+        print(f"  2. {Fore.BLUE}pyannote-audio{Style.RESET_ALL}")
+        print(f"     {Fore.WHITE}   • Traditional pipeline approach{Style.RESET_ALL}")
+        print(f"     {Fore.WHITE}   • Requires HuggingFace authentication{Style.RESET_ALL}")
+        print(f"     {Fore.WHITE}   • May require accepting model terms{Style.RESET_ALL}")
+        print(f"  3. {Fore.CYAN}ℹ️  Backend Comparison{Style.RESET_ALL}")
+        print(f"     {Fore.WHITE}   • Learn about the differences{Style.RESET_ALL}")
+        print(f"  0. {Fore.YELLOW}🔙 Back to settings{Style.RESET_ALL}")
+        
+        while True:
+            try:
+                choice = get_single_keypress(
+                    f"\n{Fore.CYAN}Select backend (1-3, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '0']
+                )
+                
+                if choice is None or choice == '0':  # User cancelled or back
+                    break
+                elif choice == '1':
+                    # SpeechBrain backend
+                    CONFIG['diarization_backend'] = 'speechbrain'
+                    save_user_setting('diarization_backend', 'speechbrain')
+                    save_user_settings_to_file()
+                    print(f"{Fore.GREEN}✓ Diarization backend set to: SpeechBrain ECAPA-TDNN{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}💡 Using modern embedding-based speaker diarization{Style.RESET_ALL}")
+                    break
+                elif choice == '2':
+                    # pyannote backend
+                    CONFIG['diarization_backend'] = 'pyannote'
+                    save_user_setting('diarization_backend', 'pyannote')
+                    save_user_settings_to_file()
+                    print(f"{Fore.GREEN}✓ Diarization backend set to: pyannote-audio{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}💡 Using traditional pipeline-based speaker diarization{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}⚠️  Note: This requires HuggingFace authentication{Style.RESET_ALL}")
+                    break
+                elif choice == '3':
+                    # Show comparison
+                    self._show_backend_comparison()
+                    
+            except (EOFError, KeyboardInterrupt):
+                break
+    
+    def _show_backend_comparison(self):
+        """Show detailed comparison of diarization backends"""
+        print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🔧 DIARIZATION BACKEND COMPARISON{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.GREEN}SpeechBrain ECAPA-TDNN:{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}Modern embedding-based approach{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}Fast inference with GPU acceleration{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}Works completely offline{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}No HuggingFace token required{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}Configurable clustering algorithms{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}Apache 2.0 license{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.BLUE}pyannote-audio:{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}Mature and well-tested pipeline{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}Integrated voice activity detection{Style.RESET_ALL}")
+        print(f"  ✓ {Fore.WHITE}Proven performance on benchmarks{Style.RESET_ALL}")
+        print(f"  ✗ {Fore.RED}Requires HuggingFace authentication{Style.RESET_ALL}")
+        print(f"  ✗ {Fore.RED}May require accepting model terms{Style.RESET_ALL}")
+        print(f"  ✗ {Fore.RED}Less configurable clustering{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}Recommendation:{Style.RESET_ALL}")
+        print(f"  • Use {Fore.GREEN}SpeechBrain{Style.RESET_ALL} for most users (faster, no auth required)")
+        print(f"  • Use {Fore.BLUE}pyannote{Style.RESET_ALL} if you already have HuggingFace setup")
+        
+        print(f"\n{Fore.CYAN}Press any key to continue...{Style.RESET_ALL}")
+        get_single_keypress("", ['']) 

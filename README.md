@@ -16,10 +16,12 @@ A real-time and batch speech transcription application with speaker diarization,
   - Support for various audio formats and devices
 
 - **Speaker Diarization:**
+  - Choice between modern SpeechBrain ECAPA-TDNN and traditional pyannote-audio backends
   - Automatic speaker detection and identification
   - Consistent speaker naming across sessions
   - Support for 1-10 speakers
   - Speaker profile management
+  - Configurable clustering algorithms (AgglomerativeClustering, DBSCAN)
 
 - **Smart Language Detection:**
   - Automatic language detection
@@ -36,8 +38,41 @@ A real-time and batch speech transcription application with speaker diarization,
 - **Output Formats:**
   - Real-time console output with timestamps
   - Saved transcripts in TXT format with speaker summary
-  - Complete audio recordings
-  - Detailed processing logs
+     - Complete audio recordings
+   - Detailed processing logs
+
+## 🔧 Diarization Backend Configuration
+
+sprachwerk now supports two diarization backends:
+
+### SpeechBrain ECAPA-TDNN (Default)
+- **Advantages:**
+  - Modern embedding-based approach
+  - Fast inference with GPU acceleration
+  - Works completely offline
+  - No HuggingFace token required
+  - Configurable clustering algorithms
+  - Apache 2.0 license
+
+- **Configuration:**
+  - Select in Settings → Diarization Backend
+  - Clustering algorithms: AgglomerativeClustering (default), DBSCAN
+  - Adjustable window length and clustering thresholds
+
+### pyannote-audio (Traditional)
+- **Advantages:**
+  - Mature and well-tested pipeline
+  - Integrated voice activity detection
+  - Proven performance on benchmarks
+
+- **Requirements:**
+  - HuggingFace authentication token
+  - May require accepting model terms
+
+### Model Management
+- Models are automatically downloaded and cached locally
+- Run `python tools/download_speechbrain_models.py` to pre-download models
+- Models stored in `models/speechbrain_ecapa/` directory
 
 ## 🚀 Quick Start
 
@@ -48,10 +83,7 @@ A real-time and batch speech transcription application with speaker diarization,
    pip install -r requirements.txt
    ```
 
-   For minimal installation (without optional features):
-   ```bash
-   pip install -r requirements-minimal.txt
-   ```
+   Note: The project now uses SpeechBrain ECAPA-TDNN for speaker diarization by default, which provides better performance without requiring HuggingFace authentication.
 
 2. **Run the application:**
    ```bash
@@ -63,6 +95,7 @@ A real-time and batch speech transcription application with speaker diarization,
    - Choose your audio device
    - Set language preferences
    - Configure speaker count
+   - Select diarization backend (SpeechBrain or pyannote-audio)
    - Review and confirm settings before starting
 
 ## 🏗️ Project Structure

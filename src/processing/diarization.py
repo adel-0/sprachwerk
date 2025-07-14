@@ -1,50 +1,57 @@
 """
-Speaker diarization module using pyannote-audio
+Speaker diarization module using SpeechBrain ECAPA-TDNN embeddings and clustering
 Identifies and segments different speakers in audio data
 """
 
 import logging
 import numpy as np
 import torch
-
-from pyannote.audio import Pipeline
-from pyannote.core import Annotation, Segment
 import threading
 import queue
 import time
 from pathlib import Path
-import tempfile
-import scipy.io.wavfile as wavfile
+from typing import List, Dict, Any, Optional
 
-from src.core.config import CONFIG, PYANNOTE_MODEL_PATH, TEMP_DIR, HF_AUTH_TOKEN
-from src.utils.warning_suppressor import configure_torch_tf32
-
-# Configure TF32 settings
-configure_torch_tf32()
+from src.core.config import CONFIG, DiarizationBackend
+from src.processing.embedding_extractor import SpeakerEmbeddingExtractor
+from src.processing.speaker_clustering import SpeakerClustering
 
 logger = logging.getLogger(__name__)
 
 class SpeakerDiarizer:
+    """
+    SpeechBrain-based speaker diarization system
+    Uses ECAPA-TDNN embeddings and clustering for speaker identification
+    """
+    
     def __init__(self):
-        self.model_path = PYANNOTE_MODEL_PATH
-        self.device = CONFIG['diarization_device']
-        self.sample_rate = CONFIG['sample_rate']
-        self.min_speakers = CONFIG['min_speakers']
-        self.max_speakers = CONFIG['max_speakers']
+        # Get configuration
+        self.config = CONFIG if CONFIG else {}
+        self.sample_rate = self.config.get('sample_rate', 16000)
+        self.min_speakers = self.config.get('min_speakers', 1)
+        self.max_speakers = self.config.get('max_speakers', 2)
         
-        # Enhanced diarization parameters for better accuracy
-        self.min_segment_duration = CONFIG.get('diarization_min_segment_duration', 0.5)
-        self.max_segment_duration = CONFIG.get('diarization_max_segment_duration', 30.0)
-        self.base_clustering_threshold = CONFIG.get('diarization_clustering_threshold', 0.7)
-        self.onset_threshold = CONFIG.get('diarization_onset_threshold', 0.5)
-        self.offset_threshold = CONFIG.get('diarization_offset_threshold', 0.5)
-        self.min_duration_on = CONFIG.get('diarization_min_duration_on', 0.1)
-        self.min_duration_off = CONFIG.get('diarization_min_duration_off', 0.1)
+        # Diarization backend selection
+        backend_str = self.config.get('diarization_backend', 'speechbrain')
+        if isinstance(backend_str, str):
+            self.backend = DiarizationBackend.SPEECHBRAIN if backend_str == 'speechbrain' else DiarizationBackend.PYANNOTE
+        else:
+            self.backend = backend_str
         
-        # Adaptive clustering threshold (will be updated based on speaker expectations)
-        self.clustering_threshold = self.base_clustering_threshold
+        # SpeechBrain parameters
+        self.window_length = self.config.get('window_length', 1.5)  # seconds
+        self.hop_length = self.config.get('hop_length', 0.75)  # seconds
+        self.cluster_threshold = self.config.get('cluster_threshold', 0.3)
+        self.min_cluster_size = self.config.get('min_cluster_size', 2)
         
-        self.pipeline = None
+        # Clustering parameters
+        self.clustering_algorithm = self.config.get('clustering_algorithm', 'agglomerative')
+        
+        # Components
+        self.embedding_extractor = SpeakerEmbeddingExtractor()
+        self.clustering = SpeakerClustering(algorithm=self.clustering_algorithm)
+        
+        # State
         self.is_loaded = False
         
         # Processing queues for real-time mode
@@ -53,299 +60,88 @@ class SpeakerDiarizer:
         self.processing_thread = None
         self.is_processing = False
         
-        # Initialize adaptive thresholds
-        self._update_adaptive_thresholds()
+        # Segment filtering parameters
+        self.min_segment_duration = self.config.get('diarization_min_segment_duration', 0.5)
+        self.max_segment_duration = self.config.get('diarization_max_segment_duration', 30.0)
         
-    def _update_adaptive_thresholds(self):
-        """Update adaptive thresholds based on current speaker configuration"""
-        # Import here to avoid circular imports
-        from src.processing.speaker_identification import SpeakerIdentifier
+        logger.info(f"Initialized SpeakerDiarizer with backend: {self.backend.value}")
+    
+    def load_model(self):
+        """Load the required models"""
+        if self.is_loaded:
+            logger.info("Diarization models already loaded")
+            return
         
-        # Create a temporary speaker identifier to get adaptive thresholds
-        temp_identifier = SpeakerIdentifier()
-        self.clustering_threshold = temp_identifier.get_current_clustering_threshold()
+        logger.info("Loading SpeechBrain diarization models...")
         
-        logger.debug(f"Updated diarization clustering threshold to: {self.clustering_threshold:.3f}")
+        try:
+            # Load embedding extractor
+            self.embedding_extractor.load_model()
+            
+            # Update clustering parameters
+            self.clustering.update_parameters(
+                min_speakers=self.min_speakers,
+                max_speakers=self.max_speakers,
+                cluster_threshold=self.cluster_threshold,
+                algorithm=self.clustering_algorithm
+            )
+            
+            self.is_loaded = True
+            logger.info("SpeechBrain diarization models loaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to load diarization models: {e}")
+            raise
     
     def update_speaker_expectations(self, min_speakers: int, max_speakers: int):
-        """Update speaker expectations and recalculate adaptive thresholds"""
+        """Update speaker expectations"""
         self.min_speakers = min_speakers
         self.max_speakers = max_speakers
         
-        # Update adaptive thresholds
-        self._update_adaptive_thresholds()
-        
-        logger.info(f"Updated speaker expectations: {min_speakers}-{max_speakers} speakers, "
-                   f"clustering threshold: {self.clustering_threshold:.3f}")
-    
-    def load_model(self):
-        """Load the speaker diarization pipeline"""
-        if self.is_loaded:
-            logger.info("Diarization pipeline already loaded")
-            return
-        
-        logger.info(f"Loading speaker diarization pipeline: {self.model_path}")
-        
-        try:
-            # Check CUDA availability
-            if self.device == 'cuda' and not torch.cuda.is_available():
-                logger.warning("CUDA not available for diarization, falling back to CPU")
-                self.device = 'cpu'
-            
-            # Load the pipeline
-            self.pipeline = Pipeline.from_pretrained(
-                self.model_path,
-                use_auth_token=HF_AUTH_TOKEN
+        # Update clustering parameters
+        if hasattr(self, 'clustering'):
+            self.clustering.update_parameters(
+                min_speakers=min_speakers,
+                max_speakers=max_speakers
             )
-            
-            # Set device
-            if self.device == 'cuda':
-                self.pipeline = self.pipeline.to(torch.device('cuda'))
-            
-            self.is_loaded = True
-            logger.info(f"Diarization pipeline loaded successfully on {self.device}")
-            
-            # Log GPU memory usage if CUDA
-            if self.device == 'cuda':
-                memory_allocated = torch.cuda.memory_allocated() / (1024**3)
-                memory_reserved = torch.cuda.memory_reserved() / (1024**3)
-                logger.info(f"GPU Memory after diarization load - Allocated: {memory_allocated:.2f}GB, Reserved: {memory_reserved:.2f}GB")
-                
-        except Exception as e:
-            logger.error(f"Failed to load diarization pipeline: {e}")
-            logger.warning("You may need to accept pyannote terms: https://huggingface.co/pyannote/speaker-diarization")
-            raise
-    
-    def _process_diarization_segments(self, diarization, chunk_timestamp):
-        """Process diarization results into standardized format"""
-        speaker_segments = []
         
-        for turn, _, speaker in diarization.itertracks(yield_label=True):
-            # Adjust timestamps with chunk offset
-            start_time = turn.start + chunk_timestamp
-            end_time = turn.end + chunk_timestamp
-            duration = turn.end - turn.start
-            
-            # Apply segment filtering
-            if self._is_valid_segment(duration):
-                speaker_segments.append({
-                    'speaker': speaker,
-                    'start': start_time,
-                    'end': end_time,
-                    'duration': duration
-                })
-        
-        # Apply speaker consolidation based on adaptive thresholds
-        consolidated_segments = self._consolidate_speakers(speaker_segments)
-        
-        return consolidated_segments
-    
-    def _consolidate_speakers(self, speaker_segments):
-        """Consolidate speakers that are likely the same person based on adaptive thresholds"""
-        if not speaker_segments or len(speaker_segments) <= 1:
-            return speaker_segments
-        
-        # Skip consolidation if we expect many speakers or have wide range
-        if self.max_speakers > 3 and (self.max_speakers - self.min_speakers) > 2:
-            logger.debug("Skipping speaker consolidation for wide speaker range")
-            return speaker_segments
-        
-        # Group segments by speaker
-        from collections import defaultdict
-        speaker_groups = defaultdict(list)
-        for segment in speaker_segments:
-            speaker_groups[segment['speaker']].append(segment)
-        
-        # If we already have the expected number or fewer speakers, minimal consolidation
-        unique_speakers = list(speaker_groups.keys())
-        if len(unique_speakers) <= self.max_speakers:
-            logger.debug(f"Speaker count ({len(unique_speakers)}) within expected range, minimal consolidation")
-            return self._minimal_speaker_consolidation(speaker_segments, speaker_groups)
-        
-        # Aggressive consolidation for single speaker scenarios
-        if self.min_speakers == 1 and self.max_speakers == 1:
-            logger.info(f"Single speaker expected, consolidating {len(unique_speakers)} speakers")
-            return self._aggressive_speaker_consolidation(speaker_segments, speaker_groups)
-        
-        # Moderate consolidation for small speaker counts
-        if self.max_speakers <= 2:
-            logger.info(f"Small speaker count expected ({self.max_speakers}), consolidating {len(unique_speakers)} speakers")
-            return self._moderate_speaker_consolidation(speaker_segments, speaker_groups)
-        
-        return speaker_segments
-    
-    def _minimal_speaker_consolidation(self, speaker_segments, speaker_groups):
-        """Minimal consolidation - only merge very similar adjacent speakers"""
-        # Only merge if speakers have very close timestamps (likely same person with slight detection gaps)
-        consolidated_segments = []
-        segments_by_time = sorted(speaker_segments, key=lambda x: x['start'])
-        
-        i = 0
-        while i < len(segments_by_time):
-            current_segment = segments_by_time[i].copy()
-            
-            # Look for immediately following segments from different speakers within 2 seconds
-            j = i + 1
-            while (j < len(segments_by_time) and 
-                   segments_by_time[j]['start'] - current_segment['end'] < 2.0 and
-                   segments_by_time[j]['speaker'] != current_segment['speaker']):
-                
-                # Merge if the gap is very small (likely same speaker)
-                if segments_by_time[j]['start'] - current_segment['end'] < 0.5:
-                    logger.debug(f"Merging adjacent speakers: {current_segment['speaker']} -> {segments_by_time[j]['speaker']}")
-                    current_segment['end'] = segments_by_time[j]['end']
-                    current_segment['duration'] = current_segment['end'] - current_segment['start']
-                    j += 1
-                else:
-                    break
-            
-            consolidated_segments.append(current_segment)
-            i = j if j > i + 1 else i + 1
-        
-        return consolidated_segments
-    
-    def _moderate_speaker_consolidation(self, speaker_segments, speaker_groups):
-        """Moderate consolidation for 2-3 expected speakers"""
-        # Calculate speaker statistics for similarity-based merging
-        speaker_stats = {}
-        for speaker, segments in speaker_groups.items():
-            total_duration = sum(seg['duration'] for seg in segments)
-            avg_duration = total_duration / len(segments)
-            speaker_stats[speaker] = {
-                'total_duration': total_duration,
-                'avg_duration': avg_duration,
-                'segment_count': len(segments),
-                'segments': segments
-            }
-        
-        # Sort speakers by total speaking time (most active first)
-        sorted_speakers = sorted(speaker_stats.items(), key=lambda x: x[1]['total_duration'], reverse=True)
-        
-        # Keep top speakers, merge others into most similar
-        keep_count = min(self.max_speakers, len(sorted_speakers))
-        main_speakers = [speaker for speaker, _ in sorted_speakers[:keep_count]]
-        merge_candidates = [speaker for speaker, _ in sorted_speakers[keep_count:]]
-        
-        # Merge short-duration speakers into main speakers
-        speaker_mapping = {speaker: speaker for speaker in main_speakers}
-        
-        for candidate in merge_candidates:
-            # Find the most similar main speaker based on temporal proximity
-            best_target = main_speakers[0]  # Default to most active speaker
-            
-            candidate_segments = speaker_stats[candidate]['segments']
-            min_avg_distance = float('inf')
-            
-            for main_speaker in main_speakers:
-                main_segments = speaker_stats[main_speaker]['segments']
-                distances = []
-                
-                for c_seg in candidate_segments:
-                    min_dist = min(abs(c_seg['start'] - m_seg['start']) for m_seg in main_segments)
-                    distances.append(min_dist)
-                
-                avg_distance = sum(distances) / len(distances) if distances else float('inf')
-                if avg_distance < min_avg_distance:
-                    min_avg_distance = avg_distance
-                    best_target = main_speaker
-            
-            speaker_mapping[candidate] = best_target
-            logger.debug(f"Merging speaker {candidate} into {best_target} (avg distance: {min_avg_distance:.2f}s)")
-        
-        # Apply mapping to segments
-        consolidated_segments = []
-        for segment in speaker_segments:
-            new_segment = segment.copy()
-            new_segment['speaker'] = speaker_mapping.get(segment['speaker'], segment['speaker'])
-            consolidated_segments.append(new_segment)
-        
-        return consolidated_segments
-    
-    def _aggressive_speaker_consolidation(self, speaker_segments, speaker_groups):
-        """Aggressive consolidation for single speaker scenarios"""
-        # For single speaker expected, merge all speakers into the most active one
-        if not speaker_groups:
-            return speaker_segments
-        
-        # Find the speaker with the most total speaking time
-        main_speaker = max(speaker_groups.keys(), 
-                          key=lambda s: sum(seg['duration'] for seg in speaker_groups[s]))
-        
-        logger.info(f"Consolidating all speakers into main speaker: {main_speaker}")
-        
-        # Reassign all segments to the main speaker
-        consolidated_segments = []
-        for segment in speaker_segments:
-            new_segment = segment.copy()
-            new_segment['speaker'] = main_speaker
-            consolidated_segments.append(new_segment)
-        
-        return consolidated_segments
-    
-    def _is_valid_segment(self, duration):
-        """Check if segment meets duration requirements"""
-        if duration < self.min_segment_duration:
-            logger.debug(f"Skipping short segment: {duration:.2f}s < {self.min_segment_duration}s")
-            return False
-        
-        if duration > self.max_segment_duration:
-            logger.debug(f"Truncating long segment: {duration:.2f}s > {self.max_segment_duration}s")
-            # Could implement segment splitting here if needed
-        
-        return True
+        logger.info(f"Updated speaker expectations: {min_speakers}-{max_speakers} speakers")
     
     def diarize_chunk(self, audio_chunk, chunk_timestamp=0.0):
         """Perform speaker diarization on a single audio chunk"""
         if not self.is_loaded:
-            raise RuntimeError("Pipeline not loaded. Call load_model() first.")
+            raise RuntimeError("Models not loaded. Call load_model() first.")
         
         try:
-            # Save audio chunk to temporary file (pyannote requires file input)
-            temp_file = tempfile.NamedTemporaryFile(
-                suffix='.wav', 
-                delete=False, 
-                dir=TEMP_DIR
-            )
-            
             # Ensure audio is in the right format
-            if audio_chunk.dtype != np.int16:
-                audio_int16 = (audio_chunk * 32767).astype(np.int16)
-            else:
-                audio_int16 = audio_chunk
+            if audio_chunk.dtype != np.float32:
+                audio_chunk = audio_chunk.astype(np.float32)
             
-            # Write audio to temp file
-            wavfile.write(temp_file.name, self.sample_rate, audio_int16)
-            temp_file.close()
+            # Extract speaker segments using sliding window
+            speaker_segments = self._extract_speaker_segments(audio_chunk, chunk_timestamp)
             
-            # Perform diarization
-            diarization = self.pipeline(
-                temp_file.name,
-                min_speakers=self.min_speakers,
-                max_speakers=self.max_speakers
-            )
+            if not speaker_segments:
+                logger.debug(f"No speaker segments found for chunk at {chunk_timestamp:.2f}s")
+                return {
+                    'speaker_segments': [],
+                    'chunk_timestamp': chunk_timestamp,
+                    'num_speakers': 0
+                }
             
-            # Process diarization results
-            speaker_segments = self._process_diarization_segments(diarization, chunk_timestamp)
-            
-            # Clean up temp file
-            Path(temp_file.name).unlink(missing_ok=True)
+            # Process segments to ensure they're valid
+            processed_segments = self._process_segments(speaker_segments)
             
             result = {
-                'speaker_segments': speaker_segments,
+                'speaker_segments': processed_segments,
                 'chunk_timestamp': chunk_timestamp,
-                'num_speakers': len(set(seg['speaker'] for seg in speaker_segments))
+                'num_speakers': len(set(seg['speaker'] for seg in processed_segments))
             }
             
-            logger.debug(f"Diarized chunk at {chunk_timestamp:.2f}s: {result['num_speakers']} speakers, {len(speaker_segments)} segments")
+            logger.debug(f"Diarized chunk at {chunk_timestamp:.2f}s: {result['num_speakers']} speakers, {len(processed_segments)} segments")
             return result
             
         except Exception as e:
             logger.error(f"Diarization failed for chunk at {chunk_timestamp:.2f}s: {e}")
-            # Clean up temp file on error
-            try:
-                Path(temp_file.name).unlink(missing_ok=True)
-            except Exception:
-                logger.debug("Failed to clean up temp file on error")
             
             return {
                 'speaker_segments': [],
@@ -353,6 +149,136 @@ class SpeakerDiarizer:
                 'num_speakers': 0,
                 'error': str(e)
             }
+    
+    def _extract_speaker_segments(self, audio_chunk, chunk_timestamp):
+        """Extract speaker segments using sliding window and clustering"""
+        
+        # Calculate window parameters
+        window_samples = int(self.window_length * self.sample_rate)
+        hop_samples = int(self.hop_length * self.sample_rate)
+        
+        # Extract overlapping windows
+        windows = []
+        window_timestamps = []
+        
+        for start_sample in range(0, len(audio_chunk) - window_samples + 1, hop_samples):
+            end_sample = start_sample + window_samples
+            window = audio_chunk[start_sample:end_sample]
+            
+            # Only process windows with sufficient audio
+            if len(window) >= window_samples:
+                windows.append(window)
+                window_timestamps.append(chunk_timestamp + start_sample / self.sample_rate)
+        
+        if not windows:
+            logger.warning("No valid windows extracted from audio chunk")
+            return []
+        
+        # Extract embeddings for each window
+        embeddings = self.embedding_extractor.extract_embeddings(windows)
+        
+        if len(embeddings) == 0:
+            logger.warning("No embeddings extracted from windows")
+            return []
+        
+        # Cluster embeddings to identify speakers
+        clustering_result = self.clustering.cluster_embeddings(embeddings, window_timestamps)
+        
+        if clustering_result['n_clusters'] == 0:
+            logger.warning("No clusters found in embeddings")
+            return []
+        
+        # Convert clustering results to speaker segments
+        speaker_segments = self._clustering_to_segments(
+            clustering_result['labels'],
+            window_timestamps,
+            self.window_length
+        )
+        
+        return speaker_segments
+    
+    def _clustering_to_segments(self, labels, timestamps, window_length):
+        """Convert clustering labels to speaker segments"""
+        if not labels or not timestamps:
+            return []
+        
+        segments = []
+        
+        # Group consecutive windows with same speaker
+        current_speaker = labels[0]
+        current_start = timestamps[0]
+        current_end = timestamps[0] + window_length
+        
+        for i in range(1, len(labels)):
+            if labels[i] == current_speaker:
+                # Continue current segment
+                current_end = timestamps[i] + window_length
+            else:
+                # End current segment and start new one
+                segments.append({
+                    'speaker': f'SPEAKER_{current_speaker:03d}',
+                    'start': current_start,
+                    'end': current_end,
+                    'duration': current_end - current_start
+                })
+                
+                current_speaker = labels[i]
+                current_start = timestamps[i]
+                current_end = timestamps[i] + window_length
+        
+        # Add the last segment
+        segments.append({
+            'speaker': f'SPEAKER_{current_speaker:03d}',
+            'start': current_start,
+            'end': current_end,
+            'duration': current_end - current_start
+        })
+        
+        return segments
+    
+    def _process_segments(self, speaker_segments):
+        """Process segments to ensure they meet minimum requirements"""
+        processed_segments = []
+        
+        for segment in speaker_segments:
+            # Apply segment filtering
+            if self._is_valid_segment(segment['duration']):
+                processed_segments.append(segment)
+        
+        # Merge adjacent segments from the same speaker
+        if processed_segments:
+            processed_segments = self._merge_adjacent_segments(processed_segments)
+        
+        return processed_segments
+    
+    def _is_valid_segment(self, duration):
+        """Check if a segment meets minimum duration requirements"""
+        return self.min_segment_duration <= duration <= self.max_segment_duration
+    
+    def _merge_adjacent_segments(self, segments):
+        """Merge adjacent segments from the same speaker"""
+        if len(segments) <= 1:
+            return segments
+        
+        merged = []
+        current_segment = segments[0].copy()
+        
+        for next_segment in segments[1:]:
+            # Check if segments are from same speaker and adjacent (within 0.5 seconds)
+            if (current_segment['speaker'] == next_segment['speaker'] and 
+                abs(next_segment['start'] - current_segment['end']) <= 0.5):
+                # Merge segments
+                current_segment['end'] = next_segment['end']
+                current_segment['duration'] = current_segment['end'] - current_segment['start']
+            else:
+                # Add current segment and start new one
+                merged.append(current_segment)
+                current_segment = next_segment.copy()
+        
+        # Add the last segment
+        merged.append(current_segment)
+        
+        return merged
     
     def diarize_file(self, audio_file_path):
         """Perform speaker diarization on a complete audio file"""
@@ -362,29 +288,70 @@ class SpeakerDiarizer:
             self.load_model()
         
         try:
-            # Perform diarization on the entire file
-            diarization = self.pipeline(
-                str(audio_file_path),
-                min_speakers=self.min_speakers,
-                max_speakers=self.max_speakers
-            )
+            # Load audio file
+            import librosa
+            audio_data, sr = librosa.load(audio_file_path, sr=self.sample_rate)
             
-            # Process diarization results
-            speaker_segments = self._process_diarization_segments(diarization, 0.0)
+            # Process in chunks to handle large files
+            chunk_duration = 30.0  # seconds
+            chunk_samples = int(chunk_duration * self.sample_rate)
+            overlap_samples = int(0.5 * self.sample_rate)  # 0.5 second overlap
+            
+            all_segments = []
+            
+            for start_sample in range(0, len(audio_data), chunk_samples - overlap_samples):
+                end_sample = min(start_sample + chunk_samples, len(audio_data))
+                chunk = audio_data[start_sample:end_sample]
+                chunk_timestamp = start_sample / self.sample_rate
+                
+                # Diarize chunk
+                chunk_result = self.diarize_chunk(chunk, chunk_timestamp)
+                all_segments.extend(chunk_result['speaker_segments'])
+            
+            # Merge overlapping segments
+            merged_segments = self._merge_overlapping_segments(all_segments)
             
             result = {
-                'speaker_segments': speaker_segments,
-                'num_speakers': len(set(seg['speaker'] for seg in speaker_segments)),
-                'total_duration': max([seg['end'] for seg in speaker_segments]) if speaker_segments else 0,
-                'speakers': list(set(seg['speaker'] for seg in speaker_segments))
+                'speaker_segments': merged_segments,
+                'num_speakers': len(set(seg['speaker'] for seg in merged_segments)),
+                'total_duration': max([seg['end'] for seg in merged_segments]) if merged_segments else 0,
+                'speakers': list(set(seg['speaker'] for seg in merged_segments))
             }
             
-            logger.info(f"File diarization completed. Found {len(set(seg['speaker'] for seg in speaker_segments))} speakers in {len(speaker_segments)} segments")
+            logger.info(f"File diarization completed. Found {result['num_speakers']} speakers in {len(merged_segments)} segments")
             return result
             
         except Exception as e:
             logger.error(f"File diarization failed: {e}")
             raise
+    
+    def _merge_overlapping_segments(self, segments):
+        """Merge overlapping segments from different chunks"""
+        if not segments:
+            return []
+        
+        # Sort segments by start time
+        segments.sort(key=lambda x: x['start'])
+        
+        merged = []
+        current_segment = segments[0].copy()
+        
+        for next_segment in segments[1:]:
+            # Check if segments overlap and are from the same speaker
+            if (current_segment['speaker'] == next_segment['speaker'] and 
+                next_segment['start'] <= current_segment['end'] + 1.0):  # 1 second tolerance
+                # Merge segments
+                current_segment['end'] = max(current_segment['end'], next_segment['end'])
+                current_segment['duration'] = current_segment['end'] - current_segment['start']
+            else:
+                # Add current segment and start new one
+                merged.append(current_segment)
+                current_segment = next_segment.copy()
+        
+        # Add the last segment
+        merged.append(current_segment)
+        
+        return merged
     
     def start_real_time_processing(self):
         """Start real-time diarization processing thread"""
@@ -492,28 +459,11 @@ class SpeakerDiarizer:
         all_segments.sort(key=lambda x: x['start'])
         
         # Merge consecutive segments from the same speaker
-        merged_segments = []
-        current_segment = None
-        
-        for segment in all_segments:
-            if current_segment is None:
-                current_segment = segment.copy()
-            elif (current_segment['speaker'] == segment['speaker'] and 
-                  abs(segment['start'] - current_segment['end']) < 1.0):  # 1 second gap tolerance
-                # Merge segments
-                current_segment['end'] = segment['end']
-                current_segment['duration'] = current_segment['end'] - current_segment['start']
-            else:
-                # Start new segment
-                merged_segments.append(current_segment)
-                current_segment = segment.copy()
-        
-        if current_segment is not None:
-            merged_segments.append(current_segment)
+        merged_segments = self._merge_overlapping_segments(all_segments)
         
         # Assign normalized speaker names
         unique_speakers = list(set(seg['speaker'] for seg in merged_segments))
-        timestamp = time.time_ns() // 1000000  # Use milliseconds for uniqueness
+        timestamp = time.time_ns() // 1000000
         speaker_mapping = {speaker: f"TEMP_SPEAKER_{i:02d}_{timestamp}" for i, speaker in enumerate(unique_speakers)}
         
         for segment in merged_segments:
@@ -531,12 +481,9 @@ class SpeakerDiarizer:
         """Clean up resources"""
         self.stop_real_time_processing()
         
-        if self.pipeline is not None:
-            # pyannote doesn't need explicit cleanup
-            self.pipeline = None
-            self.is_loaded = False
+        # Cleanup embedding extractor
+        if hasattr(self, 'embedding_extractor'):
+            self.embedding_extractor.cleanup()
         
-        # Clear GPU cache if using CUDA
-        if self.device == 'cuda' and torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            logger.info("Cleared GPU cache after diarization cleanup") 
+        self.is_loaded = False
+        logger.info("Diarization cleanup completed") 

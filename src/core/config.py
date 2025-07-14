@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Union
+from enum import Enum
 
 # Load environment variables from .env file if it exists
 try:
@@ -15,6 +16,12 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+
+class DiarizationBackend(Enum):
+    """Diarization backend options"""
+    PYANNOTE = "pyannote"
+    SPEECHBRAIN = "speechbrain"
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,28 @@ class SpeakerConfig:
     base_speaker_similarity_threshold: float = 0.5
     single_speaker_similarity_boost: float = 0.1
     single_speaker_clustering_boost: float = 0.1
+    
+    # Diarization backend selection
+    diarization_backend: DiarizationBackend = DiarizationBackend.SPEECHBRAIN
+    
+    # SpeechBrain diarization parameters
+    window_length: float = 1.5  # seconds
+    hop_length: float = 0.75  # seconds
+    cluster_threshold: float = 0.3
+    min_cluster_size: int = 2
+    
+    # Clustering algorithm parameters
+    clustering_algorithm: str = 'agglomerative'  # 'agglomerative' or 'dbscan'
+    clustering_linkage: str = 'ward'  # 'ward', 'complete', 'average', 'single'
+    clustering_affinity: str = 'euclidean'  # 'euclidean', 'cosine'
+    
+    # DBSCAN specific parameters
+    dbscan_eps: float = 0.5
+    dbscan_min_samples: int = 2
+    
+    # Adaptive clustering
+    enable_adaptive_clustering: bool = True
+    silhouette_threshold: float = 0.3
 
 
 @dataclass(frozen=True)
@@ -51,12 +80,12 @@ class WhisperConfig:
     """Whisper transcription configuration"""
     beam_size: int = 2
     temperature: float = 0.1
-    vad_threshold: float = 0.25
-    no_speech_threshold: float = 0.3
+    vad_threshold: float = 0.05  # Very low threshold for more permissive VAD
+    no_speech_threshold: float = 0.6  # Higher threshold to reduce false positives
     language: Optional[str] = None
     multilingual_segments: bool = True
     language_constraints: Optional[List[str]] = None
-    vad_filter: bool = True
+    vad_filter: bool = True  # Re-enabled with better parameters
     condition_on_previous_text: bool = False
     compression_ratio_threshold: float = 3.0
     word_timestamps: bool = True

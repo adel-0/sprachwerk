@@ -270,7 +270,7 @@ def get_speaker_preference():
     
     while True:
         try:
-            choice = _get_single_keypress(
+            choice = get_single_keypress(
                 f"\n{Fore.CYAN}Select speaker mode (1-4):{Style.RESET_ALL} ",
                 ['1', '2', '3', '4']
             )
@@ -279,8 +279,6 @@ def get_speaker_preference():
                 print(f"\n{Fore.YELLOW}Using Single Speaker mode as default.{Style.RESET_ALL}")
                 CONFIG['min_speakers'] = 1
                 CONFIG['max_speakers'] = 1
-                # Update adaptive thresholds for default case
-                _update_adaptive_thresholds_globally()
                 return
             
             choice_idx = int(choice) - 1
@@ -289,8 +287,6 @@ def get_speaker_preference():
             CONFIG['max_speakers'] = max_spk
             save_user_setting('min_speakers', min_spk)
             save_user_setting('max_speakers', max_spk)
-            # Update adaptive thresholds
-            _update_adaptive_thresholds_globally()
             save_user_settings_to_file()
             print(f"{Fore.GREEN}✓ Speaker mode set to: {description}{Style.RESET_ALL}")
             return
@@ -299,8 +295,6 @@ def get_speaker_preference():
             print(f"\n{Fore.YELLOW}Using Single Speaker mode as default.{Style.RESET_ALL}")
             CONFIG['min_speakers'] = 1
             CONFIG['max_speakers'] = 1
-            # Update adaptive thresholds for default case
-            _update_adaptive_thresholds_globally()
             return
 
 
@@ -325,16 +319,16 @@ def get_adaptive_speaker_settings():
     print(f"  2. {Fore.GREEN}Adjust base similarity threshold{Style.RESET_ALL}")
     print(f"  3. {Fore.GREEN}Adjust single speaker boost{Style.RESET_ALL}")
     print(f"  4. {Fore.GREEN}Reset to defaults{Style.RESET_ALL}")
-    print(f"  5. {Fore.MAGENTA}Keep current settings{Style.RESET_ALL}")
+    print(f"  0. {Fore.YELLOW}Keep current settings{Style.RESET_ALL}")
     
     while True:
         try:
-            choice = _get_single_keypress(
-                f"\n{Fore.CYAN}Select option (1-5):{Style.RESET_ALL} ",
-                ['1', '2', '3', '4', '5']
+            choice = get_single_keypress(
+                f"\n{Fore.CYAN}Select option (1-4, 0 to keep current):{Style.RESET_ALL} ",
+                ['1', '2', '3', '4', '0']
             )
             
-            if choice is None or choice == '5':  # User cancelled or keep current
+            if choice is None or choice == '0':  # User cancelled or keep current
                 print(f"\n{Fore.YELLOW}Keeping current settings{Style.RESET_ALL}")
                 return
             elif choice == '1':
@@ -342,7 +336,6 @@ def get_adaptive_speaker_settings():
                 CONFIG['enable_adaptive_speaker_thresholds'] = new_enabled
                 save_user_setting('enable_adaptive_speaker_thresholds', new_enabled)
                 print(f"{Fore.GREEN}✓ Adaptive thresholds {'enabled' if new_enabled else 'disabled'}{Style.RESET_ALL}")
-                _update_adaptive_thresholds_globally()
                 save_user_settings_to_file()
                 return
                 
@@ -353,7 +346,6 @@ def get_adaptive_speaker_settings():
                         CONFIG['base_speaker_similarity_threshold'] = new_threshold
                         save_user_setting('base_speaker_similarity_threshold', new_threshold)
                         print(f"{Fore.GREEN}✓ Base similarity threshold set to: {new_threshold:.2f}{Style.RESET_ALL}")
-                        _update_adaptive_thresholds_globally()
                         save_user_settings_to_file()
                         return
                     else:
@@ -368,7 +360,6 @@ def get_adaptive_speaker_settings():
                         CONFIG['single_speaker_similarity_boost'] = new_boost
                         save_user_setting('single_speaker_similarity_boost', new_boost)
                         print(f"{Fore.GREEN}✓ Single speaker boost set to: {new_boost:.2f}{Style.RESET_ALL}")
-                        _update_adaptive_thresholds_globally()
                         save_user_settings_to_file()
                         return
                     else:
@@ -386,7 +377,6 @@ def get_adaptive_speaker_settings():
                 save_user_setting('single_speaker_similarity_boost', 0.25)
                 save_user_setting('single_speaker_clustering_boost', 0.15)
                 print(f"{Fore.GREEN}✓ Reset to default adaptive threshold settings{Style.RESET_ALL}")
-                _update_adaptive_thresholds_globally()
                 save_user_settings_to_file()
                 return
                 
