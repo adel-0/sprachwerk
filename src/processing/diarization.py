@@ -36,7 +36,6 @@ class SpeakerDiarizer:
         self.window_length = self.config.get('window_length', 1.5)
         self.hop_length = self.config.get('hop_length', 0.75)
         self.cluster_threshold = self.config.get('cluster_threshold', 0.3)
-        self.min_cluster_size = self.config.get('min_cluster_size', 2)
         self.clustering_algorithm = self.config.get('clustering_algorithm', 'agglomerative')
         self.embedding_extractor = SpeakerEmbeddingExtractor()
         self.clustering = SpeakerClustering(algorithm=self.clustering_algorithm)

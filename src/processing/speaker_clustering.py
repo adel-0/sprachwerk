@@ -23,13 +23,11 @@ class SpeakerClustering:
         self.min_speakers = CONFIG.get('min_speakers', 1)
         self.max_speakers = CONFIG.get('max_speakers', 10)
         self.cluster_threshold = CONFIG.get('cluster_threshold', 0.3)
-        self.min_cluster_size = CONFIG.get('min_cluster_size', 2)
         self.linkage_method = CONFIG.get('clustering_linkage', 'ward')
         self.affinity = CONFIG.get('clustering_affinity', 'euclidean')
         self.dbscan_eps = CONFIG.get('dbscan_eps', 0.5)
         self.dbscan_min_samples = CONFIG.get('dbscan_min_samples', 2)
         self.enable_adaptive_clustering = CONFIG.get('enable_adaptive_clustering', True)
-        self.silhouette_threshold = CONFIG.get('silhouette_threshold', 0.3)
         logger.info(f"Initialized SpeakerClustering with algorithm: {algorithm}")
 
     def cluster_embeddings(self, embeddings, timestamps=None):

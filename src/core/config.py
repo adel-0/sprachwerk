@@ -59,7 +59,6 @@ class SpeakerConfig:
     window_length: float = 1.5  # seconds
     hop_length: float = 0.75  # seconds
     cluster_threshold: float = 0.3
-    min_cluster_size: int = 2
     
     # Clustering algorithm parameters
     clustering_algorithm: str = 'agglomerative'  # 'agglomerative' or 'dbscan'
@@ -72,7 +71,6 @@ class SpeakerConfig:
     
     # Adaptive clustering
     enable_adaptive_clustering: bool = True
-    silhouette_threshold: float = 0.3
 
 
 @dataclass(frozen=True)
