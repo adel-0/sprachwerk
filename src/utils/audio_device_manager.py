@@ -27,191 +27,116 @@ class AudioDeviceManager:
     def __init__(self, sample_rate: int = 48000):
         self.sample_rate = sample_rate
         self.test_duration = 2.0  # Default test duration
-        
+
+    def _device_info_dict(self, p, i):
+        device = p.get_device_info_by_index(i)
+        host_api = p.get_host_api_info_by_index(device['hostApi'])
+        return {
+            'index': i,
+            'name': device['name'],
+            'max_input_channels': device['maxInputChannels'],
+            'default_samplerate': device['defaultSampleRate'],
+            'hostapi': host_api['name']
+        }
+
+    def _is_loopback(self, name: str) -> bool:
+        name = name.lower()
+        return '[loopback]' in name or 'loopback' in name
+
+    def _is_microphone(self, name: str) -> bool:
+        name = name.lower()
+        return (
+            '[loopback]' not in name and
+            'stereo mix' not in name and
+            ('microphone' in name or 'mic' in name)
+        )
+
     def list_all_devices(self) -> List[Dict]:
         """List all available audio devices with detailed information"""
         devices = []
         try:
             p = pyaudio.PyAudio()
-            
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
-                if device['maxInputChannels'] > 0:  # Only input devices
-                    host_api = p.get_host_api_info_by_index(device['hostApi'])
-                    devices.append({
-                        'index': i,
-                        'name': device['name'],
-                        'max_input_channels': device['maxInputChannels'],
-                        'default_samplerate': device['defaultSampleRate'],
-                        'hostapi': host_api['name']
-                    })
-            
+                if device['maxInputChannels'] > 0:
+                    devices.append(self._device_info_dict(p, i))
             p.terminate()
         except Exception as e:
             logger.error(f"Error listing audio devices: {e}")
-            
         return devices
-    
-    def get_input_devices(self) -> List[Dict]:
-        """Get list of input-capable devices"""
-        return [device for device in self.list_all_devices() if device['max_input_channels'] > 0]
-    
+
     def get_loopback_devices(self) -> List[Dict]:
         """Get list of loopback devices for system audio recording"""
-        loopback_devices = []
-        
+        devices = []
         try:
             p = pyaudio.PyAudio()
-            
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
-                if device['maxInputChannels'] > 0:
-                    host_api = p.get_host_api_info_by_index(device['hostApi'])
-                    
-                    # Check if this is a loopback device
-                    if '[Loopback]' in device['name'] or 'loopback' in device['name'].lower():
-                        loopback_devices.append({
-                            'index': i,
-                            'name': device['name'],
-                            'max_input_channels': device['maxInputChannels'],
-                            'default_samplerate': device['defaultSampleRate'],
-                            'hostapi': host_api['name']
-                        })
-            
+                if device['maxInputChannels'] > 0 and self._is_loopback(device['name']):
+                    devices.append(self._device_info_dict(p, i))
             p.terminate()
         except Exception as e:
             logger.error(f"Error getting loopback devices: {e}")
-            
-        return loopback_devices
-    
+        return devices
+
     def get_microphone_devices(self) -> List[Dict]:
         """Get list of microphone devices"""
-        microphone_devices = []
-        
+        devices = []
         try:
             p = pyaudio.PyAudio()
-            
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
-                if device['maxInputChannels'] > 0:
-                    host_api = p.get_host_api_info_by_index(device['hostApi'])
-                    device_name = device['name'].lower()
-                    
-                    # Check if this is a microphone device (not loopback, not stereo mix)
-                    if ('[loopback]' not in device_name and 
-                        'stereo mix' not in device_name and
-                        ('microphone' in device_name or 'mic' in device_name)):
-                        
-                        microphone_devices.append({
-                            'index': i,
-                            'name': device['name'],
-                            'max_input_channels': device['maxInputChannels'],
-                            'default_samplerate': device['defaultSampleRate'],
-                            'hostapi': host_api['name']
-                        })
-            
+                if device['maxInputChannels'] > 0 and self._is_microphone(device['name']):
+                    devices.append(self._device_info_dict(p, i))
             p.terminate()
         except Exception as e:
             logger.error(f"Error getting microphone devices: {e}")
-            
-        return microphone_devices
-    
+        return devices
+
     def get_best_loopback_device(self) -> Optional[Dict]:
-        """Get the best loopback device for system audio recording"""
+        """Get the best loopback device for system audio recording (prefer WASAPI)"""
+        best = None
         try:
             p = pyaudio.PyAudio()
-            
-            # Look for WASAPI loopback devices first (preferred)
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
-                if device['maxInputChannels'] > 0 and '[Loopback]' in device['name']:
-                    host_api = p.get_host_api_info_by_index(device['hostApi'])
-                    if host_api['name'] == 'Windows WASAPI':
+                if device['maxInputChannels'] > 0 and self._is_loopback(device['name']):
+                    info = self._device_info_dict(p, i)
+                    if info['hostapi'] == 'Windows WASAPI':
                         logger.info(f"Found WASAPI loopback device: [{i}] {device['name']}")
                         p.terminate()
-                        return {
-                            'index': i,
-                            'name': device['name'],
-                            'max_input_channels': device['maxInputChannels'],
-                            'default_samplerate': device['defaultSampleRate'],
-                            'hostapi': host_api['name']
-                        }
-            
-            # Fallback to any loopback device
-            for i in range(p.get_device_count()):
-                device = p.get_device_info_by_index(i)
-                if device['maxInputChannels'] > 0 and '[Loopback]' in device['name']:
-                    host_api = p.get_host_api_info_by_index(device['hostApi'])
-                    logger.info(f"Found loopback device: [{i}] {device['name']}")
-                    p.terminate()
-                    return {
-                        'index': i,
-                        'name': device['name'],
-                        'max_input_channels': device['maxInputChannels'],
-                        'default_samplerate': device['defaultSampleRate'],
-                        'hostapi': host_api['name']
-                    }
-            
-            logger.warning("No loopback device found")
+                        return info
+                    if not best:
+                        best = info
             p.terminate()
-            return None
-            
         except Exception as e:
             logger.error(f"Error getting best loopback device: {e}")
-            return None
-    
+        if not best:
+            logger.warning("No loopback device found")
+        return best
+
     def get_best_microphone_device(self) -> Optional[Dict]:
-        """Get the best microphone device"""
+        """Get the best microphone device (prefer WASAPI)"""
+        best = None
         try:
             p = pyaudio.PyAudio()
-            
-            # Look for WASAPI microphone devices first (preferred)
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
-                if (device['maxInputChannels'] > 0 and 
-                    '[Loopback]' not in device['name'] and 
-                    'stereo mix' not in device['name'].lower() and
-                    ('microphone' in device['name'].lower() or 'mic' in device['name'].lower())):
-                    
-                    host_api = p.get_host_api_info_by_index(device['hostApi'])
-                    if host_api['name'] == 'Windows WASAPI':
+                if device['maxInputChannels'] > 0 and self._is_microphone(device['name']):
+                    info = self._device_info_dict(p, i)
+                    if info['hostapi'] == 'Windows WASAPI':
                         logger.info(f"Found WASAPI microphone device: [{i}] {device['name']}")
                         p.terminate()
-                        return {
-                            'index': i,
-                            'name': device['name'],
-                            'max_input_channels': device['maxInputChannels'],
-                            'default_samplerate': device['defaultSampleRate'],
-                            'hostapi': host_api['name']
-                        }
-            
-            # Fallback to any microphone device
-            for i in range(p.get_device_count()):
-                device = p.get_device_info_by_index(i)
-                if (device['maxInputChannels'] > 0 and 
-                    '[Loopback]' not in device['name'] and 
-                    'stereo mix' not in device['name'].lower() and
-                    ('microphone' in device['name'].lower() or 'mic' in device['name'].lower())):
-                    
-                    host_api = p.get_host_api_info_by_index(device['hostApi'])
-                    logger.info(f"Found microphone device: [{i}] {device['name']}")
-                    p.terminate()
-                    return {
-                        'index': i,
-                        'name': device['name'],
-                        'max_input_channels': device['maxInputChannels'],
-                        'default_samplerate': device['defaultSampleRate'],
-                        'hostapi': host_api['name']
-                    }
-            
-            logger.warning("No microphone device found")
+                        return info
+                    if not best:
+                        best = info
             p.terminate()
-            return None
-            
         except Exception as e:
             logger.error(f"Error getting best microphone device: {e}")
-            return None
-    
+        if not best:
+            logger.warning("No microphone device found")
+        return best
+
     def test_device(self, device_index: int, duration: float = None) -> Tuple[bool, Dict]:
         """
         Test a specific audio input device comprehensively
@@ -347,7 +272,7 @@ class AudioDeviceManager:
     
     def find_best_device(self) -> Optional[Dict]:
         """Test all input devices and find the best working one"""
-        input_devices = self.get_input_devices()
+        input_devices = self.list_all_devices()
         working_devices = []
         
         logger.info(f"Testing {len(input_devices)} input devices...")

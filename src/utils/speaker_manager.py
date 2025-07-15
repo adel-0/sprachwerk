@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import datetime
 from colorama import Fore, Style
 from typing import List, Dict, Optional, Tuple
+import msvcrt
 
 from src.processing.speaker_identification import SpeakerIdentifier
 from src.core.config import OUTPUT_DIR
@@ -141,102 +142,62 @@ class SpeakerManager:
         
         self._wait_for_user()
 
+    def _select_speaker(self, speakers, prompt, allow_back=True):
+        """Helper to select a speaker from a list. Returns the selected speaker or None if cancelled."""
+        if not speakers:
+            print(f"{Fore.YELLOW}No speakers found.{Style.RESET_ALL}")
+            self._wait_for_user()
+            return None
+        for i, speaker in enumerate(speakers, 1):
+            speaking_time = speaker['total_speaking_time']
+            if speaking_time >= 3600:
+                time_str = f"{speaking_time/3600:.1f}h"
+            elif speaking_time >= 60:
+                time_str = f"{speaking_time/60:.1f}m"
+            else:
+                time_str = f"{speaking_time:.0f}s"
+            name_color = Fore.GREEN if speaker['name'] != 'Unnamed' else Fore.YELLOW
+            print(f"{i:<3} {name_color}{speaker['name']:<25}{Style.RESET_ALL} {time_str:<15} {speaker['speaker_id']:<15}")
+        while True:
+            choice = input(f"\n{Fore.CYAN}{prompt}{Style.RESET_ALL} ").strip()
+            if allow_back and choice.lower() in ('back', ''):
+                return None
+            if choice.isdigit() and 1 <= int(choice) <= len(speakers):
+                return speakers[int(choice) - 1]
+            print(f"{Fore.RED}Invalid choice. Please select 1-{len(speakers)} or 'back'.{Style.RESET_ALL}")
+
+    def _confirm(self, prompt):
+        """Helper for Y/N confirmation. Returns True if confirmed."""
+        return get_single_keypress(f"{Fore.CYAN}{prompt} (Y/N):{Style.RESET_ALL} ", ['y', 'n']) == 'y'
+
     def _rename_speaker(self):
-        """Rename a speaker"""
+        """Rename a speaker (refactored)"""
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}✏️  RENAME SPEAKER{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        
         try:
-            speakers = self.speaker_identifier.list_speakers()
-            
-            if not speakers:
-                print(f"\n{Fore.YELLOW}No speakers found in database.{Style.RESET_ALL}")
-                self._wait_for_user()
+            speakers = sorted(self.speaker_identifier.list_speakers(), key=lambda x: x['total_speaking_time'], reverse=True)
+            selected = self._select_speaker(speakers, f"Enter speaker number (1-{len(speakers)}) or 'back':")
+            if not selected:
                 return
-            
-            # Sort by speaking time for better UX
-            speakers_sorted = sorted(speakers, key=lambda x: x['total_speaking_time'], reverse=True)
-            
-            print(f"\n{Fore.YELLOW}Select speaker to rename:{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'#':<3} {'Current Name':<25} {'Speaking Time':<15} {'ID':<15}{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'-'*60}{Style.RESET_ALL}")
-            
-            for i, speaker in enumerate(speakers_sorted, 1):
-                # Format speaking time
-                speaking_time = speaker['total_speaking_time']
-                if speaking_time >= 3600:
-                    time_str = f"{speaking_time/3600:.1f}h"
-                elif speaking_time >= 60:
-                    time_str = f"{speaking_time/60:.1f}m"
-                else:
-                    time_str = f"{speaking_time:.0f}s"
-                
-                name_color = Fore.GREEN if speaker['name'] != 'Unnamed' else Fore.YELLOW
-                print(f"{i:<3} {name_color}{speaker['name']:<25}{Style.RESET_ALL} {time_str:<15} {speaker['speaker_id']:<15}")
-            
-            # Get speaker selection
-            while True:
-                try:
-                    choice = input(f"\n{Fore.CYAN}Enter speaker number (1-{len(speakers_sorted)}) or 'back':{Style.RESET_ALL} ").strip()
-                    
-                    if choice.lower() == 'back':
-                        return
-                    
-                    speaker_idx = int(choice) - 1
-                    if 0 <= speaker_idx < len(speakers_sorted):
-                        selected_speaker = speakers_sorted[speaker_idx]
-                        break
-                    else:
-                        print(f"{Fore.RED}Invalid choice. Please enter 1-{len(speakers_sorted)}.{Style.RESET_ALL}")
-                        
-                except ValueError:
-                    print(f"{Fore.RED}Please enter a valid number.{Style.RESET_ALL}")
-                except (EOFError, KeyboardInterrupt):
-                    return
-            
-            # Get new name
-            current_name = selected_speaker['name']
+            current_name = selected['name']
             print(f"\n{Fore.YELLOW}Current name: {Fore.CYAN}{current_name}{Style.RESET_ALL}")
-            
             while True:
-                try:
-                    new_name = input(f"{Fore.CYAN}Enter new name (or 'cancel' to abort):{Style.RESET_ALL} ").strip()
-                    
-                    if new_name.lower() == 'cancel':
-                        return
-                    
-                    if not new_name:
-                        print(f"{Fore.RED}Name cannot be empty.{Style.RESET_ALL}")
-                        continue
-                    
-                    if len(new_name) > 50:
-                        print(f"{Fore.RED}Name too long. Maximum 50 characters.{Style.RESET_ALL}")
-                        continue
-                    
-                    # Check if name already exists
-                    existing_names = [s['name'] for s in speakers if s['speaker_id'] != selected_speaker['speaker_id']]
-                    if new_name in existing_names:
-                        print(f"{Fore.RED}Name '{new_name}' already exists. Please choose a different name.{Style.RESET_ALL}")
-                        continue
-                    
-                    break
-                    
-                except (EOFError, KeyboardInterrupt):
+                new_name = input(f"{Fore.CYAN}Enter new name (or 'cancel' to abort):{Style.RESET_ALL} ").strip()
+                if new_name.lower() == 'cancel':
                     return
-            
-            # Confirm rename
-            print(f"\n{Fore.YELLOW}Rename '{current_name}' to '{new_name}'?{Style.RESET_ALL}")
-            
-            confirm = get_single_keypress(
-                f"{Fore.CYAN}Confirm rename? (Y/N):{Style.RESET_ALL} ",
-                ['y', 'n']
-            )
-            
-            if confirm == 'y':
-                # Perform rename
-                success = self.speaker_identifier.assign_speaker_name(selected_speaker['speaker_id'], new_name)
-                
+                if not new_name:
+                    print(f"{Fore.RED}Name cannot be empty.{Style.RESET_ALL}")
+                    continue
+                if len(new_name) > 50:
+                    print(f"{Fore.RED}Name too long. Maximum 50 characters.{Style.RESET_ALL}")
+                    continue
+                if any(s['name'] == new_name and s['speaker_id'] != selected['speaker_id'] for s in speakers):
+                    print(f"{Fore.RED}Name '{new_name}' already exists. Please choose a different name.{Style.RESET_ALL}")
+                    continue
+                break
+            if self._confirm(f"Rename '{current_name}' to '{new_name}'?"):
+                success = self.speaker_identifier.assign_speaker_name(selected['speaker_id'], new_name)
                 if success:
                     print(f"{Fore.GREEN}✓ Speaker renamed successfully!{Style.RESET_ALL}")
                     print(f"  {Fore.CYAN}'{current_name}' → '{new_name}'{Style.RESET_ALL}")
@@ -244,157 +205,52 @@ class SpeakerManager:
                     print(f"{Fore.RED}Failed to rename speaker.{Style.RESET_ALL}")
             else:
                 print(f"{Fore.YELLOW}Rename cancelled.{Style.RESET_ALL}")
-                
         except Exception as e:
             print(f"{Fore.RED}Error in rename operation: {e}{Style.RESET_ALL}")
             logger.error(f"Error in _rename_speaker: {e}")
-        
         self._wait_for_user()
 
     def _merge_speakers(self):
-        """Merge two or more speakers"""
+        """Merge two speakers (refactored)"""
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}🔗 MERGE SPEAKERS{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        
         try:
-            speakers = self.speaker_identifier.list_speakers()
-            
+            speakers = sorted(self.speaker_identifier.list_speakers(), key=lambda x: x['total_speaking_time'], reverse=True)
             if len(speakers) < 2:
                 print(f"\n{Fore.YELLOW}Need at least 2 speakers to perform merge.{Style.RESET_ALL}")
                 self._wait_for_user()
                 return
-            
-            # Sort by speaking time for better UX
-            speakers_sorted = sorted(speakers, key=lambda x: x['total_speaking_time'], reverse=True)
-            
-            print(f"\n{Fore.YELLOW}⚠️  Speaker merging combines two speakers into one.{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}⚠️  This action cannot be undone.{Style.RESET_ALL}")
-            
-            print(f"\n{Fore.YELLOW}Available speakers:{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'#':<3} {'Name':<25} {'Speaking Time':<15} {'ID':<15}{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'-'*60}{Style.RESET_ALL}")
-            
-            for i, speaker in enumerate(speakers_sorted, 1):
-                # Format speaking time
-                speaking_time = speaker['total_speaking_time']
-                if speaking_time >= 3600:
-                    time_str = f"{speaking_time/3600:.1f}h"
-                elif speaking_time >= 60:
-                    time_str = f"{speaking_time/60:.1f}m"
-                else:
-                    time_str = f"{speaking_time:.0f}s"
-                
-                name_color = Fore.GREEN if speaker['name'] != 'Unnamed' else Fore.YELLOW
-                print(f"{i:<3} {name_color}{speaker['name']:<25}{Style.RESET_ALL} {time_str:<15} {speaker['speaker_id']:<15}")
-            
-            # Get first speaker (keep this one)
-            while True:
-                try:
-                    choice = input(f"\n{Fore.CYAN}Select speaker to KEEP (1-{len(speakers_sorted)}) or 'back':{Style.RESET_ALL} ").strip()
-                    
-                    if choice.lower() == 'back':
-                        return
-                    
-                    keep_idx = int(choice) - 1
-                    if 0 <= keep_idx < len(speakers_sorted):
-                        keep_speaker = speakers_sorted[keep_idx]
-                        break
-                    else:
-                        print(f"{Fore.RED}Invalid choice. Please enter 1-{len(speakers_sorted)}.{Style.RESET_ALL}")
-                        
-                except ValueError:
-                    print(f"{Fore.RED}Please enter a valid number.{Style.RESET_ALL}")
-                except (EOFError, KeyboardInterrupt):
-                    return
-            
-            # Get second speaker (merge into first)
-            remaining_speakers = [s for s in speakers_sorted if s['speaker_id'] != keep_speaker['speaker_id']]
-            
-            print(f"\n{Fore.GREEN}Keeping: {keep_speaker['name']}{Style.RESET_ALL}")
-            print(f"\n{Fore.YELLOW}Select speaker to MERGE INTO the kept speaker:{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'#':<3} {'Name':<25} {'Speaking Time':<15} {'ID':<15}{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'-'*60}{Style.RESET_ALL}")
-            
-            for i, speaker in enumerate(remaining_speakers, 1):
-                # Format speaking time
-                speaking_time = speaker['total_speaking_time']
-                if speaking_time >= 3600:
-                    time_str = f"{speaking_time/3600:.1f}h"
-                elif speaking_time >= 60:
-                    time_str = f"{speaking_time/60:.1f}m"
-                else:
-                    time_str = f"{speaking_time:.0f}s"
-                
-                name_color = Fore.GREEN if speaker['name'] != 'Unnamed' else Fore.YELLOW
-                print(f"{i:<3} {name_color}{speaker['name']:<25}{Style.RESET_ALL} {time_str:<15} {speaker['speaker_id']:<15}")
-            
-            while True:
-                try:
-                    choice = input(f"\n{Fore.CYAN}Select speaker to merge (1-{len(remaining_speakers)}) or 'back':{Style.RESET_ALL} ").strip()
-                    
-                    if choice.lower() == 'back':
-                        return
-                    
-                    merge_idx = int(choice) - 1
-                    if 0 <= merge_idx < len(remaining_speakers):
-                        merge_speaker = remaining_speakers[merge_idx]
-                        break
-                    else:
-                        print(f"{Fore.RED}Invalid choice. Please enter 1-{len(remaining_speakers)}.{Style.RESET_ALL}")
-                        
-                except ValueError:
-                    print(f"{Fore.RED}Please enter a valid number.{Style.RESET_ALL}")
-                except (EOFError, KeyboardInterrupt):
-                    return
-            
-            # Name preference
-            if keep_speaker['name'] != 'Unnamed' and merge_speaker['name'] != 'Unnamed':
+            print(f"\n{Fore.YELLOW}⚠️  Speaker merging combines two speakers into one. This action cannot be undone.{Style.RESET_ALL}")
+            keep = self._select_speaker(speakers, f"Select speaker to KEEP (1-{len(speakers)}) or 'back':")
+            if not keep:
+                return
+            remaining = [s for s in speakers if s['speaker_id'] != keep['speaker_id']]
+            print(f"\n{Fore.GREEN}Keeping: {keep['name']}{Style.RESET_ALL}")
+            merge = self._select_speaker(remaining, f"Select speaker to MERGE INTO the kept speaker (1-{len(remaining)}) or 'back':")
+            if not merge:
+                return
+            keep_name_from = None
+            if keep['name'] != 'Unnamed' and merge['name'] != 'Unnamed':
                 print(f"\n{Fore.YELLOW}Both speakers have names. Which name should be kept?{Style.RESET_ALL}")
-                print(f"  1. Keep '{keep_speaker['name']}' (from speaker with more speaking time)")
-                print(f"  2. Keep '{merge_speaker['name']}' (from speaker being merged)")
-                
-                name_choice = get_single_keypress(
-                    f"{Fore.CYAN}Select name preference (1-2):{Style.RESET_ALL} ",
-                    ['1', '2']
-                )
-                
-                if name_choice is None:
+                print(f"  1. Keep '{keep['name']}' (from speaker with more speaking time)")
+                print(f"  2. Keep '{merge['name']}' (from speaker being merged)")
+                name_choice = get_single_keypress(f"{Fore.CYAN}Select name preference (1-2):{Style.RESET_ALL} ", ['1', '2'])
+                if not name_choice:
                     return
-                
-                keep_name_from = keep_speaker['speaker_id'] if name_choice == '1' else merge_speaker['speaker_id']
-            else:
-                keep_name_from = None
-            
-            # Confirm merge
-            print(f"\n{Fore.YELLOW}⚠️  Are you sure you want to merge these speakers?{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}⚠️  This action cannot be undone.{Style.RESET_ALL}")
-            
-            confirm = get_single_keypress(
-                f"{Fore.CYAN}Confirm merge? (Y/N):{Style.RESET_ALL} ",
-                ['y', 'n']
-            )
-            
-            if confirm == 'y':
-                # Perform merge
-                success = self.speaker_identifier.merge_speakers(
-                    keep_speaker['speaker_id'], 
-                    merge_speaker['speaker_id'],
-                    keep_name_from=keep_name_from
-                )
-                
+                keep_name_from = keep['speaker_id'] if name_choice == '1' else merge['speaker_id']
+            if self._confirm(f"Are you sure you want to merge '{merge['name']}' into '{keep['name']}'? This cannot be undone."):
+                success = self.speaker_identifier.merge_speakers(keep['speaker_id'], merge['speaker_id'], keep_name_from=keep_name_from)
                 if success:
                     print(f"{Fore.GREEN}✓ Speakers merged successfully!{Style.RESET_ALL}")
-                    print(f"  {Fore.CYAN}'{merge_speaker['name']}' merged into '{keep_speaker['name']}'{Style.RESET_ALL}")
+                    print(f"  {Fore.CYAN}'{merge['name']}' merged into '{keep['name']}'{Style.RESET_ALL}")
                 else:
                     print(f"{Fore.RED}Failed to merge speakers.{Style.RESET_ALL}")
             else:
                 print(f"{Fore.YELLOW}Merge cancelled.{Style.RESET_ALL}")
-                
         except Exception as e:
             print(f"{Fore.RED}Error in merge operation: {e}{Style.RESET_ALL}")
             logger.error(f"Error in _merge_speakers: {e}")
-        
         self._wait_for_user()
 
     def _view_speaker_details(self):
