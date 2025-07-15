@@ -13,6 +13,10 @@ from datetime import datetime
 from colorama import init, Fore, Style
 import numpy as np
 
+# Suppress warnings and logging from speechbrain as early as possible
+from src.utils.warning_suppressor import setup_logging_suppressions
+setup_logging_suppressions()
+
 # Initialize colorama for colored output
 init()
 
@@ -23,14 +27,59 @@ from src.processing.transcription import WhisperTranscriber
 from src.processing.diarization import SpeakerDiarizer
 from src.processing.alignment import TranscriptionAligner
 from src.utils.output_formatter import OutputFormatter
+from speechbrain.inference import EncoderClassifier
+import torch
+from faster_whisper import WhisperModel
+
+# Ensure SpeechBrain ECAPA-TDNN model is downloaded and cached at startup
+def ensure_speechbrain_ecapa_download():
+    model_dir = Path("models/speechbrain_ecapa")
+    model_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        # Download the model if not already cached
+        model = EncoderClassifier.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            savedir=str(model_dir),
+            run_opts={"device": "cpu"}
+        )
+        # Test the model to ensure it works
+        dummy_input = torch.randn(1, 48000)
+        _ = model.encode_batch(dummy_input)
+        del model
+    except Exception as e:
+        print(f"[Startup] Failed to download or test SpeechBrain ECAPA-TDNN model: {e}")
+
+# Ensure Whisper model is downloaded and cached at startup
+def ensure_whisper_model_download():
+    from src.core.config import CONFIG
+    model_dir = Path("models/whisper")
+    model_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        device = CONFIG['whisper_device']
+        compute_type = CONFIG['whisper_compute_type']
+        
+        # Fall back to CPU if CUDA not available
+        if device == 'cuda' and not torch.cuda.is_available():
+            device = 'cpu'
+            compute_type = 'float32'
+            
+        model = WhisperModel(
+            CONFIG['whisper_model'],
+            device=device,
+            compute_type=compute_type,
+            download_root=str(model_dir)
+        )
+        # Test the model to ensure it works
+        del model
+    except Exception as e:
+        print(f"[Startup] Failed to download or test Whisper model: {e}")
 
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, LOGGING_CONFIG['level']),
     format=LOGGING_CONFIG['format'],
     handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(Path(CONFIG['output_directory']) / 'transcription.log')
+        logging.StreamHandler(sys.stdout)
     ]
 )
 
@@ -38,6 +87,8 @@ logger = logging.getLogger(__name__)
 
 class TranscriptionApp:
     def __init__(self, enable_signal_handlers=True):
+        ensure_speechbrain_ecapa_download()
+        ensure_whisper_model_download()
         self.audio_capture = AudioCapture()
         self.system_audio_capture = SystemAudioCapture()
         self.transcriber = WhisperTranscriber()
@@ -320,7 +371,7 @@ class TranscriptionApp:
     
     def _save_real_time_recording(self, complete_recording):
         """Save the complete real-time recording"""
-        if not complete_recording or len(complete_recording) == 0:
+        if complete_recording is None or len(complete_recording) == 0:
             print(f"{Fore.YELLOW}⚠ No audio data to save{Style.RESET_ALL}")
             return
             
@@ -342,7 +393,7 @@ class TranscriptionApp:
             else:
                 # Save microphone recording with dual audio support
                 raw_recording = getattr(audio_capture, 'realtime_recording_raw', None)
-                if raw_recording and len(raw_recording) > 0:
+                if raw_recording is not None and len(raw_recording) > 0:
                     processed_path, raw_path = audio_capture.save_dual_audio(
                         complete_recording, np.array(raw_recording), "realtime_recording"
                     )

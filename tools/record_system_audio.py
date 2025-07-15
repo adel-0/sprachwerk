@@ -281,8 +281,9 @@ def save_as_wav(audio_data, sample_rate, channels, filename=None):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"mixed_audio_recording_{timestamp}.wav"
     
-    os.makedirs("temp", exist_ok=True)
-    filepath = os.path.join("temp", filename)
+    output_dir = "outputs"
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = os.path.join(output_dir, filename)
     
     try:
         with wave.open(filepath, 'wb') as wav_file:

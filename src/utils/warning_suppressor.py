@@ -50,6 +50,37 @@ def setup_logging_suppressions():
     warnings.filterwarnings("ignore", message=".*pkg_resources.*deprecated.*")
     warnings.filterwarnings("ignore", category=UserWarning, message=".*pkg_resources.*")
     
+    # SpeechBrain and its dependencies sometimes emit logs and warnings even when log level is set.
+    # We must aggressively suppress all output from speechbrain and its submodules, including INFO, DEBUG, WARNING, and even custom handlers.
+    import sys
+    import types
+    # Suppress all warnings from speechbrain and its submodules
+    warnings.filterwarnings("ignore", module="speechbrain.*")
+    # Suppress all logging from speechbrain and its submodules
+    for logger_name in [
+        'speechbrain',
+        'speechbrain.utils.fetching',
+        'speechbrain.utils.parameter_transfer',
+        'speechbrain.utils.checkpoints',
+    ]:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.CRITICAL)
+        logger.disabled = True
+        # Remove all handlers
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+    # Patch sys.stderr and sys.stdout for speechbrain if needed
+    class DevNull:
+        def write(self, _): pass
+        def flush(self): pass
+    # Optionally, patch warnings.showwarning to a no-op for speechbrain
+    orig_showwarning = warnings.showwarning
+    def silent_showwarning(*args, **kwargs):
+        if args and hasattr(args[0], 'module') and args[0].module and args[0].module.startswith('speechbrain'):
+            return
+        return orig_showwarning(*args, **kwargs)
+    warnings.showwarning = silent_showwarning
+    
     # Configure speechbrain logging
     speechbrain_logger = logging.getLogger('speechbrain')
     speechbrain_logger.setLevel(logging.CRITICAL)

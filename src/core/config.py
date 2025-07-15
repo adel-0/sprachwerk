@@ -442,7 +442,7 @@ HF_AUTH_TOKEN = os.getenv('HF_AUTH_TOKEN')
 
 # Logging configuration
 LOGGING_CONFIG = {
-    'level': 'INFO',
+    'level': 'WARNING',
     'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 }
 
