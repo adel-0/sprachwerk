@@ -158,7 +158,6 @@ All transcription results are organized in the `outputs/` directory:
 - Speaker-labeled text files with timestamps
 - Complete audio recordings with processing metadata
 - Detailed logs and performance statistics
-- JSON format results for programmatic access
 
 ## 🔧 Optional Dependencies
 

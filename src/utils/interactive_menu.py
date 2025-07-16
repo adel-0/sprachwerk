@@ -144,12 +144,7 @@ class InteractiveMenu:
         print(f"  🎤 Audio Device: {Fore.GREEN}{device_info}{Style.RESET_ALL}")
         print(f"  🎵 Audio Processing: {Fore.GREEN}{processing_mode}{Style.RESET_ALL}")
         print(f"  🔊 Audio Source: {Fore.GREEN}{audio_source_display}{Style.RESET_ALL}")
-        backend_str = CONFIG.get('diarization_backend', 'speechbrain')
-        backend_display = {
-            'speechbrain': 'SpeechBrain ECAPA-TDNN',
-            'pyannote': 'pyannote-audio'
-        }.get(backend_str, 'SpeechBrain ECAPA-TDNN')
-        print(f"  🔧 Diarization: {Fore.GREEN}{backend_display}{Style.RESET_ALL}")
+        print(f"  🔧 Diarization: {Fore.GREEN}SpeechBrain ECAPA-TDNN{Style.RESET_ALL}")
 
     def _speaker_management_menu(self):
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
@@ -768,14 +763,12 @@ class InteractiveMenu:
             print(f"     {Fore.WHITE}   • Choose system audio, microphone, or both{Style.RESET_ALL}")
             print(f"  6. {Fore.YELLOW}🎭 Speaker Management{Style.RESET_ALL}")
             print(f"     {Fore.WHITE}   • Rename speakers, merge duplicates, manage database{Style.RESET_ALL}")
-            print(f"  7. {Fore.RED}🔧 Diarization Backend{Style.RESET_ALL}")
-            print(f"     {Fore.WHITE}   • Choose between pyannote and SpeechBrain diarization{Style.RESET_ALL}")
             print(f"  0. {Fore.YELLOW}🔙 Back to Main Menu{Style.RESET_ALL}")
             
             try:
                 choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select option (1-7, 0 to go back):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '4', '5', '6', '7', '0']
+                    f"\n{Fore.CYAN}Select option (1-6, 0 to go back):{Style.RESET_ALL} ",
+                    ['1', '2', '3', '4', '5', '6', '0']
                 )
                 
                 if choice is None or choice == '0':  # User cancelled or back
@@ -792,89 +785,8 @@ class InteractiveMenu:
                     self._audio_source_menu()
                 elif choice == '6':
                     self._speaker_management_menu()
-                elif choice == '7':
-                    self._diarization_backend_menu()
                     
             except (EOFError, KeyboardInterrupt):
                 break
     
-    def _diarization_backend_menu(self):
-        """Diarization backend selection menu"""
-        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🔧 DIARIZATION BACKEND SELECTION{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        
-        print(f"\n{Fore.YELLOW}Diarization Backend Options:{Style.RESET_ALL}")
-        print(f"  1. {Fore.GREEN}SpeechBrain ECAPA-TDNN{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Modern embedding-based approach{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Fast and accurate speaker separation{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Works offline without HuggingFace token{Style.RESET_ALL}")
-        print(f"  2. {Fore.BLUE}pyannote-audio{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Traditional pipeline approach{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Requires HuggingFace authentication{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • May require accepting model terms{Style.RESET_ALL}")
-        print(f"  3. {Fore.CYAN}ℹ️  Backend Comparison{Style.RESET_ALL}")
-        print(f"     {Fore.WHITE}   • Learn about the differences{Style.RESET_ALL}")
-        print(f"  0. {Fore.YELLOW}🔙 Back to settings{Style.RESET_ALL}")
-        
-        while True:
-            try:
-                choice = get_single_keypress(
-                    f"\n{Fore.CYAN}Select backend (1-3, 0 to go back):{Style.RESET_ALL} ",
-                    ['1', '2', '3', '0']
-                )
-                
-                if choice is None or choice == '0':  # User cancelled or back
-                    break
-                elif choice == '1':
-                    # SpeechBrain backend
-                    CONFIG['diarization_backend'] = 'speechbrain'
-                    save_user_setting('diarization_backend', 'speechbrain')
-                    save_user_settings_to_file()
-                    print(f"{Fore.GREEN}✓ Diarization backend set to: SpeechBrain ECAPA-TDNN{Style.RESET_ALL}")
-                    print(f"{Fore.YELLOW}💡 Using modern embedding-based speaker diarization{Style.RESET_ALL}")
-                    break
-                elif choice == '2':
-                    # pyannote backend
-                    CONFIG['diarization_backend'] = 'pyannote'
-                    save_user_setting('diarization_backend', 'pyannote')
-                    save_user_settings_to_file()
-                    print(f"{Fore.GREEN}✓ Diarization backend set to: pyannote-audio{Style.RESET_ALL}")
-                    print(f"{Fore.YELLOW}💡 Using traditional pipeline-based speaker diarization{Style.RESET_ALL}")
-                    print(f"{Fore.YELLOW}⚠️  Note: This requires HuggingFace authentication{Style.RESET_ALL}")
-                    break
-                elif choice == '3':
-                    # Show comparison
-                    self._show_backend_comparison()
-                    
-            except (EOFError, KeyboardInterrupt):
-                break
-    
-    def _show_backend_comparison(self):
-        """Show detailed comparison of diarization backends"""
-        print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🔧 DIARIZATION BACKEND COMPARISON{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        
-        print(f"\n{Fore.GREEN}SpeechBrain ECAPA-TDNN:{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}Modern embedding-based approach{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}Fast inference with GPU acceleration{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}Works completely offline{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}No HuggingFace token required{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}Configurable clustering algorithms{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}Apache 2.0 license{Style.RESET_ALL}")
-        
-        print(f"\n{Fore.BLUE}pyannote-audio:{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}Mature and well-tested pipeline{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}Integrated voice activity detection{Style.RESET_ALL}")
-        print(f"  ✓ {Fore.WHITE}Proven performance on benchmarks{Style.RESET_ALL}")
-        print(f"  ✗ {Fore.RED}Requires HuggingFace authentication{Style.RESET_ALL}")
-        print(f"  ✗ {Fore.RED}May require accepting model terms{Style.RESET_ALL}")
-        print(f"  ✗ {Fore.RED}Less configurable clustering{Style.RESET_ALL}")
-        
-        print(f"\n{Fore.YELLOW}Recommendation:{Style.RESET_ALL}")
-        print(f"  • Use {Fore.GREEN}SpeechBrain{Style.RESET_ALL} for most users (faster, no auth required)")
-        print(f"  • Use {Fore.BLUE}pyannote{Style.RESET_ALL} if you already have HuggingFace setup")
-        
-        print(f"\n{Fore.CYAN}Press any key to continue...{Style.RESET_ALL}")
-        get_single_keypress("", ['']) 
+ 

@@ -30,9 +30,7 @@ class SpeakerDiarizer:
         self.min_speakers = self.config.get('min_speakers', 1)
         self.max_speakers = self.config.get('max_speakers', 2)
         backend_str = self.config.get('diarization_backend', 'speechbrain')
-        self.backend = (
-            DiarizationBackend.SPEECHBRAIN if backend_str == 'speechbrain' else DiarizationBackend.PYANNOTE
-        ) if isinstance(backend_str, str) else backend_str
+        self.backend = DiarizationBackend.SPEECHBRAIN
         self.window_length = self.config.get('window_length', 1.5)
         self.hop_length = self.config.get('hop_length', 0.75)
         self.cluster_threshold = self.config.get('cluster_threshold', 0.3)

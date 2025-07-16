@@ -20,7 +20,6 @@ except ImportError:
 
 class DiarizationBackend(Enum):
     """Diarization backend options"""
-    PYANNOTE = "pyannote"
     SPEECHBRAIN = "speechbrain"
 
 
@@ -435,7 +434,6 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 TEMP_DIR.mkdir(exist_ok=True)
 
 # Model paths
-PYANNOTE_MODEL_PATH = "pyannote/speaker-diarization-3.1"
 HF_AUTH_TOKEN = os.getenv('HF_AUTH_TOKEN')
 
 # Logging configuration

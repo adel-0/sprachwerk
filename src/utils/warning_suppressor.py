@@ -29,10 +29,9 @@ def setup_logging_suppressions():
     warnings.filterwarnings("ignore", message=".*TF32.*")
     warnings.filterwarnings("ignore", category=UserWarning, message=".*TensorFloat-32.*")
     
-    # Suppress pyannote warnings
+    # Suppress deprecated warnings
     warnings.filterwarnings("ignore", message=".*std.*degrees of freedom.*")
     warnings.filterwarnings("ignore", message=".*correction should be strictly less than.*")
-    warnings.filterwarnings("ignore", category=UserWarning, module="pyannote.*")
     
     # Suppress deprecated torchaudio warnings
     warnings.filterwarnings("ignore", message=".*torchaudio.*deprecated.*")
