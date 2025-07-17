@@ -29,13 +29,11 @@ class AudioCapture(BaseAudioCapture):
         self.recording_start_time = None
     
     def select_device(self, device_index=None):
-        """Select audio input device with simplified logic"""
-        # Use device from config if available
-        if device_index is None:
-            device_index = CONFIG.get('audio_device_index')
+        """Select audio input device"""
+        device_index = device_index or CONFIG.get('audio_device_index')
         
         # Try specified device first
-        if device_index is not None and self._test_device(device_index):
+        if device_index and self._test_device(device_index):
             sd.default.device[0] = device_index
             return True
         
@@ -53,35 +51,31 @@ class AudioCapture(BaseAudioCapture):
         return False
     
     def _test_device(self, device_index, test_duration=0.5):
-         """Simple device test that sets the device if it works"""
-         original_device = sd.default.device[0]
-         success = False
-         try:
-             # Temporarily set device for test
-             sd.default.device[0] = device_index
-             device_info = sd.query_devices(device_index)
-             if device_info['max_input_channels'] <= 0:
-                 return False
-             
-             # Quick test recording
-             recording = sd.rec(
-                 int(test_duration * self.sample_rate),
-                 samplerate=self.sample_rate,
-                 channels=self.channels,
-                 dtype=np.float32,
-                 device=device_index
-             )
-             sd.wait()
-             
-             success = recording is not None and len(recording) > 0
-             return success
-         except Exception:
-             success = False
-             return False
-         finally:
-             # Restore original device if test failed
-             if not success:
-                 sd.default.device[0] = original_device
+        """Test if device is working"""
+        original_device = sd.default.device[0]
+        try:
+            sd.default.device[0] = device_index
+            device_info = sd.query_devices(device_index)
+            if device_info['max_input_channels'] <= 0:
+                return False
+            
+            # Quick test recording
+            recording = sd.rec(
+                int(test_duration * self.sample_rate),
+                samplerate=self.sample_rate,
+                channels=self.channels,
+                dtype=np.float32,
+                device=device_index
+            )
+            sd.wait()
+            
+            return recording is not None and len(recording) > 0
+            
+        except Exception:
+            return False
+        finally:
+            if sd.default.device[0] == device_index:
+                sd.default.device[0] = original_device
     
     def test_audio_input(self, duration=1):
         """Quick audio input test"""
@@ -140,8 +134,7 @@ class AudioCapture(BaseAudioCapture):
             self.audio_buffer = self.audio_buffer[samples_to_remove:]
             
             try:
-                import time as _time
-                self.audio_queue.put((chunk, _time.time()), block=False)
+                self.audio_queue.put((chunk, time.time()), block=False)
             except queue.Full:
                 logger.warning("Audio queue full, dropping chunk")
     

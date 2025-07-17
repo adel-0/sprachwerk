@@ -56,30 +56,20 @@ class SystemAudioCapture(BaseAudioCapture):
     def _get_device(self, device_index: Optional[int], device_type: str) -> Optional[Dict]:
         """Generic device selection method"""
         if device_index is not None:
-            try:
-                all_devices = self.device_manager.list_all_devices()
-                for device in all_devices:
-                    if device['index'] == device_index and device['max_input_channels'] > 0:
-                        logger.info(f"Using {device_type} device [{device_index}]: {device['name']}")
-                        return device
-                logger.warning(f"Device index {device_index} not found or has no input channels")
-                return None
-            except Exception as e:
-                logger.error(f"Error getting device {device_index}: {e}")
-                return None
+            all_devices = self.device_manager.list_all_devices()
+            for device in all_devices:
+                if device['index'] == device_index and device['max_input_channels'] > 0:
+                    logger.info(f"Using {device_type} device [{device_index}]: {device['name']}")
+                    return device
+            logger.warning(f"Device index {device_index} not found or has no input channels")
+            return None
         
         # Auto-detect best device
-        try:
-            device = (self.device_manager.get_best_loopback_device() if device_type == 'loopback' 
-                     else self.device_manager.get_best_microphone_device())
-            if device:
-                logger.info(f"Auto-selected {device_type} device: [{device['index']}] {device['name']}")
-                return device
-            logger.warning(f"No {device_type} device found")
-            return None
-        except Exception as e:
-            logger.error(f"Error getting {device_type} device: {e}")
-            return None
+        device = (self.device_manager.get_best_loopback_device() if device_type == 'loopback' 
+                 else self.device_manager.get_best_microphone_device())
+        if device:
+            logger.info(f"Auto-selected {device_type} device: [{device['index']}] {device['name']}")
+        return device
     
     def get_recording_device(self, device_index: Optional[int] = None) -> Optional[Dict]:
         """Get a suitable device for recording system audio (loopback)"""
@@ -108,7 +98,7 @@ class SystemAudioCapture(BaseAudioCapture):
         
         return True
     
-    def _find_supported_sample_rate(self, p: pyaudio.PyAudio, device: Dict) -> Optional[int]:
+    def _find_supported_sample_rate(self, p: pyaudio.PyAudio, device: Dict) -> int:
         """Find supported sample rate for device"""
         supported_rates = [48000, 44100, 32000, 22050, 16000]
         channels = min(device['max_input_channels'], 2)
@@ -122,7 +112,7 @@ class SystemAudioCapture(BaseAudioCapture):
                     return rate
             except ValueError:
                 continue
-        return None
+        return 48000  # Default fallback
     
     def _record_audio_stream(self, p: pyaudio.PyAudio, device: Dict, duration: float, 
                             audio_queue: queue.Queue, stream_name: str):
@@ -130,10 +120,8 @@ class SystemAudioCapture(BaseAudioCapture):
         stream = None
         try:
             sample_rate = self._find_supported_sample_rate(p, device)
-            if sample_rate is None:
-                raise RuntimeError(f"No supported sample rate found for {device['name']}")
-
             channels = min(device['max_input_channels'], 2)
+            
             stream = p.open(
                 format=pyaudio.paInt16,
                 channels=channels,
@@ -543,11 +531,8 @@ class SystemAudioCapture(BaseAudioCapture):
         stream = None
         try:
             sample_rate = self._find_supported_sample_rate(p, device)
-            if sample_rate is None:
-                logger.error(f"No supported sample rate found for {device['name']}")
-                return
-
             channels = min(device['max_input_channels'], 2)
+            
             stream = p.open(
                 format=pyaudio.paInt16,
                 channels=channels,

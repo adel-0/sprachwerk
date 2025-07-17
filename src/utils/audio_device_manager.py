@@ -5,19 +5,8 @@ Uses pyaudiowpatch for Windows loopback audio recording
 
 import pyaudiowpatch as pyaudio
 import numpy as np
-import time
 import logging
-from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-
-try:
-    from colorama import Fore, Style
-except ImportError:
-    # Fallback if colorama is not available
-    class DummyColor:
-        def __getattr__(self, name):
-            return ""
-    Fore = Style = DummyColor()
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +15,14 @@ class AudioDeviceManager:
     
     def __init__(self, sample_rate: int = 48000):
         self.sample_rate = sample_rate
-        self.test_duration = 2.0  # Default test duration
+        self.test_duration = 2.0
 
-    def _device_info_dict(self, p, i):
-        device = p.get_device_info_by_index(i)
+    def _get_device_info(self, device_index: int, p: pyaudio.PyAudio) -> Dict:
+        """Get device information as dictionary"""
+        device = p.get_device_info_by_index(device_index)
         host_api = p.get_host_api_info_by_index(device['hostApi'])
         return {
-            'index': i,
+            'index': device_index,
             'name': device['name'],
             'max_input_channels': device['maxInputChannels'],
             'default_samplerate': device['defaultSampleRate'],
@@ -40,40 +30,41 @@ class AudioDeviceManager:
         }
 
     def _is_loopback(self, name: str) -> bool:
-        name = name.lower()
-        return '[loopback]' in name or 'loopback' in name
+        """Check if device is a loopback device"""
+        return 'loopback' in name.lower()
 
     def _is_microphone(self, name: str) -> bool:
-        name = name.lower()
+        """Check if device is a microphone"""
+        name_lower = name.lower()
         return (
-            '[loopback]' not in name and
-            'stereo mix' not in name and
-            ('microphone' in name or 'mic' in name)
+            'loopback' not in name_lower and
+            'stereo mix' not in name_lower and
+            ('microphone' in name_lower or 'mic' in name_lower)
         )
 
     def list_all_devices(self) -> List[Dict]:
-        """List all available audio devices with detailed information"""
+        """List all available audio devices"""
         devices = []
         try:
             p = pyaudio.PyAudio()
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
                 if device['maxInputChannels'] > 0:
-                    devices.append(self._device_info_dict(p, i))
+                    devices.append(self._get_device_info(i, p))
             p.terminate()
         except Exception as e:
             logger.error(f"Error listing audio devices: {e}")
         return devices
 
     def get_loopback_devices(self) -> List[Dict]:
-        """Get list of loopback devices for system audio recording"""
+        """Get list of loopback devices"""
         devices = []
         try:
             p = pyaudio.PyAudio()
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
                 if device['maxInputChannels'] > 0 and self._is_loopback(device['name']):
-                    devices.append(self._device_info_dict(p, i))
+                    devices.append(self._get_device_info(i, p))
             p.terminate()
         except Exception as e:
             logger.error(f"Error getting loopback devices: {e}")
@@ -87,7 +78,7 @@ class AudioDeviceManager:
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
                 if device['maxInputChannels'] > 0 and self._is_microphone(device['name']):
-                    devices.append(self._device_info_dict(p, i))
+                    devices.append(self._get_device_info(i, p))
             p.terminate()
         except Exception as e:
             logger.error(f"Error getting microphone devices: {e}")
@@ -101,7 +92,7 @@ class AudioDeviceManager:
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
                 if device['maxInputChannels'] > 0 and self._is_loopback(device['name']):
-                    info = self._device_info_dict(p, i)
+                    info = self._get_device_info(i, p)
                     if info['hostapi'] == 'Windows WASAPI':
                         logger.info(f"Found WASAPI loopback device: [{i}] {device['name']}")
                         p.terminate()
@@ -123,7 +114,7 @@ class AudioDeviceManager:
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
                 if device['maxInputChannels'] > 0 and self._is_microphone(device['name']):
-                    info = self._device_info_dict(p, i)
+                    info = self._get_device_info(i, p)
                     if info['hostapi'] == 'Windows WASAPI':
                         logger.info(f"Found WASAPI microphone device: [{i}] {device['name']}")
                         p.terminate()
@@ -138,12 +129,7 @@ class AudioDeviceManager:
         return best
 
     def test_device(self, device_index: int, duration: float = None) -> Tuple[bool, Dict]:
-        """
-        Test a specific audio input device comprehensively
-        
-        Returns:
-            Tuple of (is_working, test_results)
-        """
+        """Test a specific audio input device"""
         if duration is None:
             duration = self.test_duration
             
@@ -160,18 +146,15 @@ class AudioDeviceManager:
         stream = None
         try:
             p = pyaudio.PyAudio()
-            
-            # Get device info
             device_info = p.get_device_info_by_index(device_index)
             test_results['device_name'] = device_info['name']
             test_results['max_channels'] = device_info['maxInputChannels']
             
-            # Check if device has input capabilities
             if device_info['maxInputChannels'] <= 0:
                 test_results['error'] = "Device has no input channels"
                 return False, test_results
             
-            # Find supported sample rate - prioritize 48000 Hz for better audio quality
+            # Find supported sample rate
             supported_rates = [48000, 44100, 32000, 22050, 16000]
             sample_rate = None
             channels = min(device_info['maxInputChannels'], 2)
@@ -226,7 +209,7 @@ class AudioDeviceManager:
                 test_results['max_amplitude'] = float(max_amplitude)
                 test_results['rms_amplitude'] = float(rms_amplitude)
                 
-                # Determine if device is working based on signal strength
+                # Determine if device is working
                 if max_amplitude > 0.001:
                     test_results['working'] = True
                     test_results['signal_quality'] = 'good'
@@ -242,23 +225,8 @@ class AudioDeviceManager:
                 test_results['working'] = False
                 
         except Exception as e:
-            error_msg = str(e)
-            test_results['error'] = error_msg
+            test_results['error'] = str(e)
             test_results['working'] = False
-            
-            # Provide specific guidance for common errors
-            if "PaErrorCode -9999" in error_msg or "WDM-KS" in error_msg:
-                test_results['error_type'] = 'driver_error'
-                test_results['suggestion'] = "Windows WDM-KS driver error - try different device"
-            elif "Invalid number of channels" in error_msg:
-                test_results['error_type'] = 'channel_error'
-                test_results['suggestion'] = "Channel configuration error"
-            elif "Device unavailable" in error_msg:
-                test_results['error_type'] = 'unavailable'
-                test_results['suggestion'] = "Device may be in use by another application"
-            else:
-                test_results['error_type'] = 'unknown'
-                test_results['suggestion'] = "Try restarting audio service or using different device"
                 
         finally:
             if stream:
@@ -278,7 +246,7 @@ class AudioDeviceManager:
         logger.info(f"Testing {len(input_devices)} input devices...")
         
         for device in input_devices:
-            is_working, test_results = self.test_device(device['index'], duration=1.0)  # Shorter test for auto-selection
+            is_working, test_results = self.test_device(device['index'], duration=1.0)
             if is_working:
                 device['test_results'] = test_results
                 working_devices.append(device)
@@ -287,7 +255,7 @@ class AudioDeviceManager:
                 logger.debug(f"✗ Device {device['index']}: {device['name']} - {test_results.get('error', 'failed')}")
         
         if working_devices:
-            # Sort by signal quality (good > weak) and then by max amplitude
+            # Sort by signal quality and amplitude
             def device_score(device):
                 test_results = device['test_results']
                 quality_score = {'good': 3, 'weak': 2}.get(test_results.get('signal_quality'), 1)
@@ -297,9 +265,9 @@ class AudioDeviceManager:
             best_device = max(working_devices, key=device_score)
             logger.info(f"Best device: {best_device['index']} - {best_device['name']}")
             return best_device
-        else:
-            logger.warning("No working input devices found")
-            return None
+        
+        logger.warning("No working input devices found")
+        return None
     
     def auto_select_device(self) -> Optional[int]:
         """Automatically select the best working device"""

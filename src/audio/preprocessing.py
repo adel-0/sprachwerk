@@ -39,11 +39,10 @@ class AudioPreprocessor:
             'energy_threshold': 0.02,
             'highpass_freq': 80,
             'lowpass_freq': 8000,
-            # New adaptive parameters
-            'adaptation_window_sec': 2.0,  # Window for adaptive statistics
-            'noise_update_threshold': 0.1,  # When to update noise profile
-            'gain_smoothing_factor': 0.9,   # Smoothing for gain changes
-            'min_adaptation_samples': 1600  # Minimum samples for adaptation
+            'adaptation_window_sec': 2.0,
+            'noise_update_threshold': 0.1,
+            'gain_smoothing_factor': 0.9,
+            'min_adaptation_samples': 1600
         }
         
         # Voice activity detection parameters
@@ -53,7 +52,7 @@ class AudioPreprocessor:
         # Adaptive noise profiling
         self.noise_profile = None
         self.noise_profile_length = int(0.5 * sample_rate)
-        self.noise_profiles_history = []  # Store multiple noise profiles
+        self.noise_profiles_history = []
         self.max_noise_profiles = 5
         
         # Adaptive gain control
@@ -72,13 +71,9 @@ class AudioPreprocessor:
     
     def _validate_audio_input(self, audio: np.ndarray) -> bool:
         """Validate audio input parameters"""
-        if len(audio) == 0:
-            return False
-        if not isinstance(audio, np.ndarray):
-            return False
-        if audio.dtype not in [np.float32, np.float64]:
-            return False
-        return True
+        return (len(audio) > 0 and 
+                isinstance(audio, np.ndarray) and 
+                audio.dtype in [np.float32, np.float64])
     
     def preprocess_audio(self, audio: np.ndarray, **processing_options) -> np.ndarray:
         """
@@ -96,30 +91,31 @@ class AudioPreprocessor:
             
         processed_audio = audio.copy().astype(np.float32)
         
-        # Minimal pipeline – removed unused noise reduction and compression stages
+        # Pipeline configuration
         pipeline_config = {
             'enable_filtering': True,
             'enable_gain_boost': True,
             'enable_normalization': True
         }
-        
-        # Override with user options
         pipeline_config.update(processing_options)
         
         logger.debug(f"Starting audio preprocessing: {len(processed_audio)} samples")
         
         # Apply processing pipeline
-        processing_steps = [
-            ('filtering', self._apply_frequency_filtering, pipeline_config['enable_filtering']),
-            ('noise_gate', self._apply_noise_gate, True),  # Always apply noise gate
-            ('gain_boost', self._apply_adaptive_gain, pipeline_config['enable_gain_boost']),
-            ('normalization', self._apply_normalization, pipeline_config['enable_normalization'])
-        ]
+        if pipeline_config['enable_filtering']:
+            processed_audio = self._apply_frequency_filtering(processed_audio)
+            logger.debug("Applied filtering")
+            
+        processed_audio = self._apply_noise_gate(processed_audio)
+        logger.debug("Applied noise gate")
         
-        for step_name, step_func, enabled in processing_steps:
-            if enabled:
-                processed_audio = step_func(processed_audio)
-                logger.debug(f"Applied {step_name}")
+        if pipeline_config['enable_gain_boost']:
+            processed_audio = self._apply_adaptive_gain(processed_audio)
+            logger.debug("Applied gain boost")
+            
+        if pipeline_config['enable_normalization']:
+            processed_audio = self._apply_normalization(processed_audio)
+            logger.debug("Applied normalization")
         
         # Final clipping protection
         processed_audio = np.clip(processed_audio, -1.0, 1.0)
@@ -152,7 +148,6 @@ class AudioPreprocessor:
     
     def _apply_noise_gate(self, audio: np.ndarray) -> np.ndarray:
         """Apply noise gate to remove very quiet background noise"""
-        # Calculate RMS in small windows
         window_size = int(0.01 * self.sample_rate)  # 10ms windows
         
         if len(audio) < window_size:
@@ -163,20 +158,14 @@ class AudioPreprocessor:
         kernel = np.ones(window_size) / window_size
         rms = np.sqrt(np.convolve(audio_squared, kernel, mode='same'))
         
-        # Create gate mask
+        # Create gate mask and apply smooth transitions
         gate_mask = rms > self.params['noise_gate_threshold']
-        
-        # Apply smooth transitions to avoid clicks
         gate_mask = scipy.ndimage.uniform_filter1d(gate_mask.astype(float), size=window_size//2)
         
         return audio * gate_mask
     
     def _apply_adaptive_gain(self, audio: np.ndarray) -> np.ndarray:
         """Apply adaptive gain boost for distant microphones with sliding window analysis"""
-        if len(audio) == 0:
-            return audio
-        
-        # For short audio, use simple global approach
         if len(audio) < self.adaptation_window_samples:
             return self._apply_simple_gain(audio)
         
@@ -244,7 +233,6 @@ class AudioPreprocessor:
     
     def _calculate_adaptive_gain(self, window_audio: np.ndarray) -> float:
         """Calculate adaptive gain for a window of audio"""
-        # Calculate RMS for this window
         current_rms = np.sqrt(np.mean(window_audio ** 2))
         
         if current_rms < 1e-6:
@@ -296,17 +284,11 @@ class AudioPreprocessor:
         
         # Estimate speech band energy (300-3400 Hz typical for speech)
         speech_mask = (f >= 300) & (f <= 3400)
-        if np.any(speech_mask):
-            speech_energy = np.mean(psd[speech_mask])
-        else:
-            speech_energy = np.mean(psd)
+        speech_energy = np.mean(psd[speech_mask]) if np.any(speech_mask) else np.mean(psd)
         
         # Estimate noise energy from low and high frequencies
         noise_mask = (f < 300) | (f > 4000)
-        if np.any(noise_mask):
-            noise_energy = np.mean(psd[noise_mask])
-        else:
-            noise_energy = np.mean(psd) * 0.1  # Assume 10% noise
+        noise_energy = np.mean(psd[noise_mask]) if np.any(noise_mask) else np.mean(psd) * 0.1
         
         # Calculate SNR in dB - with better zero handling
         if noise_energy > 1e-10:  # Prevent divide by zero
@@ -315,22 +297,6 @@ class AudioPreprocessor:
             snr_db = 20  # High SNR if no detectable noise
         
         return max(snr_db, 0)  # Ensure non-negative SNR
-    
-    def _apply_noise_reduction(self, audio: np.ndarray) -> np.ndarray:
-        """Noise reduction disabled - feature removed for simplicity"""
-        return audio
-    
-
-    
-    def _adaptive_spectral_subtraction(self, audio: np.ndarray) -> np.ndarray:
-        """Spectral subtraction removed - feature simplified"""
-        return audio
-    
-    def _estimate_frame_snr(self, signal_power: np.ndarray, noise_power: np.ndarray) -> float:
-        """SNR estimation removed - feature simplified"""
-        return 0.0
-    
-
     
     def _spectral_subtraction(self, audio: np.ndarray) -> np.ndarray:
         """Apply spectral subtraction using estimated noise profile"""
@@ -385,10 +351,6 @@ class AudioPreprocessor:
             output[i:i + frame_length] += clean_frame
         
         return output
-    
-    def _apply_compression(self, audio: np.ndarray) -> np.ndarray:
-        """Compression disabled - feature removed for simplicity"""
-        return audio
     
     def _apply_normalization(self, audio: np.ndarray) -> np.ndarray:
         """Apply audio normalization to target RMS level"""
@@ -456,10 +418,8 @@ class AudioPreprocessor:
                 magnitude = np.abs(fft_frame)
                 freqs = np.fft.rfftfreq(len(frame), 1/self.sample_rate)
                 
-                if np.sum(magnitude) > 0:
-                    spectral_centroid = np.sum(freqs * magnitude) / np.sum(magnitude)
-                else:
-                    spectral_centroid = 0
+                spectral_centroid = (np.sum(freqs * magnitude) / np.sum(magnitude) 
+                                   if np.sum(magnitude) > 0 else 0)
                 spectral_features.append(spectral_centroid)
             else:
                 spectral_features.append(0)
@@ -519,7 +479,6 @@ class AudioPreprocessor:
     
     def _apply_vad_smoothing(self, vad_result: np.ndarray) -> np.ndarray:
         """Apply temporal smoothing to VAD results using efficient morphological operations"""
-        # Return early if empty
         if vad_result.size == 0:
             return vad_result
 
@@ -557,7 +516,6 @@ class AudioPreprocessor:
         # 2. Very basic high-pass filter to remove rumble/AC hum (60Hz and below)
         if len(processed_audio) > 100:  # Only if we have enough samples
             try:
-                from scipy.signal import butter, filtfilt
                 nyquist = self.sample_rate / 2
                 low_freq = 50.0  # Remove everything below 50Hz
                 if low_freq < nyquist:
@@ -581,6 +539,22 @@ class AudioPreprocessor:
         
         logger.debug("Minimal audio enhancement completed")
         return processed_audio
+    
+    def _estimate_noise_profile(self, noise_audio: np.ndarray):
+        """Estimate noise profile from noise sample"""
+        if len(noise_audio) < 1024:
+            return
+        
+        # Calculate power spectral density of noise
+        f, psd = scipy.signal.welch(noise_audio, fs=self.sample_rate, nperseg=1024)
+        
+        # Store noise profile
+        self.noise_profile = psd
+        
+        # Update noise profiles history
+        self.noise_profiles_history.append(psd.copy())
+        if len(self.noise_profiles_history) > self.max_noise_profiles:
+            self.noise_profiles_history.pop(0)
     
     def update_noise_profile(self, noise_audio: np.ndarray):
         """Update noise profile with new noise sample"""

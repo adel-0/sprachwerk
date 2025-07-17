@@ -5,7 +5,6 @@ Identifies and segments different speakers in audio data
 
 import logging
 import numpy as np
-import torch
 import threading
 import queue
 import time

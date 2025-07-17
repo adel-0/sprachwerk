@@ -130,7 +130,6 @@ class OutputConfig:
     output_format: str = 'txt'
     timestamp_format: str = '%H:%M:%S.%f'
     output_directory: str = 'outputs'
-    temp_directory: str = 'temp'
 
 
 @dataclass(frozen=True)
@@ -363,7 +362,6 @@ class TranscriptionConfig:
         result['output_format'] = self.output.output_format
         result['timestamp_format'] = self.output.timestamp_format
         result['output_directory'] = self.output.output_directory
-        result['temp_directory'] = self.output.temp_directory
         
         # User preferences
         result['preferred_mode'] = self.user_preferences.preferred_mode
@@ -429,9 +427,7 @@ config_manager = ConfigManager()
 
 # Create directories
 OUTPUT_DIR = Path('outputs')
-TEMP_DIR = Path('temp')
 OUTPUT_DIR.mkdir(exist_ok=True)
-TEMP_DIR.mkdir(exist_ok=True)
 
 # Model paths
 HF_AUTH_TOKEN = os.getenv('HF_AUTH_TOKEN')
