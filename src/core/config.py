@@ -9,6 +9,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Union
 from enum import Enum
+import sys
 
 # Load environment variables from .env file if it exists
 try:
@@ -129,7 +130,7 @@ class OutputConfig:
     """Output-related configuration"""
     output_format: str = 'txt'
     timestamp_format: str = '%H:%M:%S.%f'
-    output_directory: str = 'outputs'
+    output_directory: str = get_outputs_dir()
 
 
 @dataclass(frozen=True)
@@ -377,7 +378,7 @@ class ConfigManager:
     """Manages configuration loading, saving, and mode switching"""
     
     def __init__(self):
-        self._user_settings_file = Path('user_settings.json')
+        self._user_settings_file = Path(os.path.join(get_settings_dir(), 'user_settings.json'))
         self._persisted_settings = {
             'whisper_language', 'whisper_multilingual_segments', 'whisper_language_constraints',
             'min_speakers', 'max_speakers', 'enable_adaptive_speaker_thresholds',
@@ -422,11 +423,31 @@ class ConfigManager:
             return None
 
 
+# --- Windows-specific path helpers ---
+def get_documents_dir():
+    return os.path.join(os.environ["USERPROFILE"], "Documents", "sprachwerk")
+
+def get_outputs_dir():
+    return os.path.join(get_documents_dir(), "Outputs")
+
+def get_settings_dir():
+    return get_documents_dir()
+
+def get_models_dir():
+    return os.path.join(os.environ["LOCALAPPDATA"], "sprachwerk", "models")
+
+def get_cache_dir():
+    return os.path.join(os.environ["LOCALAPPDATA"], "sprachwerk", ".cache")
+
+# Ensure directories exist
+for d in [get_documents_dir(), get_outputs_dir(), get_models_dir(), get_cache_dir()]:
+    os.makedirs(d, exist_ok=True)
+
 # Global configuration manager instance
 config_manager = ConfigManager()
 
 # Create directories
-OUTPUT_DIR = Path('outputs')
+OUTPUT_DIR = Path(get_outputs_dir())
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Model paths

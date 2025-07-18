@@ -46,6 +46,7 @@ from collections import defaultdict
 import librosa
 
 from src.core.config import CONFIG, OUTPUT_DIR
+from src.core.config import get_outputs_dir
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +71,9 @@ class SpeakerProfile:
 
 class SpeakerIdentifier:
     def __init__(self, speakers_db_path=None):
-        self.speakers_db_path = speakers_db_path or (OUTPUT_DIR / "speakers_database.json")
-        self.voice_signatures_path = OUTPUT_DIR / "voice_signatures.pkl"
+        outputs_dir = Path(get_outputs_dir())
+        self.speakers_db_path = speakers_db_path or (outputs_dir / "speakers_database.json")
+        self.voice_signatures_path = outputs_dir / "voice_signatures.pkl"
         self.speakers_db: Dict[str, SpeakerProfile] = {}
         self.voice_signatures: Dict[str, np.ndarray] = {}
         self.current_session_mapping: Dict[str, str] = {}

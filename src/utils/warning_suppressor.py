@@ -6,6 +6,7 @@ Consolidates all warning suppressions to eliminate code duplication
 import os
 import warnings
 import logging
+from src.core.config import get_cache_dir
 
 def configure_torch_tf32():
     """Configure TF32 settings if torch is available"""
@@ -22,7 +23,7 @@ def setup_logging_suppressions():
     # Set environment variables early
     os.environ.setdefault('PYTHONWARNINGS', 'ignore::UserWarning')
     os.environ.setdefault('SPEECHBRAIN_LOG_LEVEL', 'WARNING')
-    os.environ.setdefault('SPEECHBRAIN_CACHE', os.path.join(os.getcwd(), '.cache', 'speechbrain'))
+    os.environ.setdefault('SPEECHBRAIN_CACHE', os.path.join(get_cache_dir(), 'speechbrain'))
     
     # Suppress TF32 warnings globally
     warnings.filterwarnings("ignore", message=".*TensorFloat-32.*")

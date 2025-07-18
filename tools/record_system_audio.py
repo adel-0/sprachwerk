@@ -7,6 +7,9 @@ import os
 import threading
 import queue
 from datetime import datetime
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from src.core.config import get_outputs_dir
 
 
 def list_devices():
@@ -280,8 +283,7 @@ def save_as_wav(audio_data, sample_rate, channels, filename=None):
     if filename is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"mixed_audio_recording_{timestamp}.wav"
-    
-    output_dir = "outputs"
+    output_dir = get_outputs_dir()
     os.makedirs(output_dir, exist_ok=True)
     filepath = os.path.join(output_dir, filename)
     

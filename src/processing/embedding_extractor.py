@@ -9,6 +9,7 @@ import torch
 from pathlib import Path
 from speechbrain.inference import EncoderClassifier
 from src.core.config import CONFIG
+from src.core.config import get_models_dir
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class SpeakerEmbeddingExtractor:
     """
     
     def __init__(self, model_path=None):
-        self.model_path = model_path or Path("models/speechbrain_ecapa")
+        self.model_path = model_path or Path(get_models_dir()) / "speechbrain_ecapa"
         self.sample_rate = CONFIG.get('sample_rate', 48000)
         self.min_segment_length = int(0.5 * self.sample_rate)
         self.max_segment_length = int(10.0 * self.sample_rate)

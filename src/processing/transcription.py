@@ -12,7 +12,7 @@ import queue
 import time
 from pathlib import Path
 
-from src.core.config import CONFIG, TEMP_DIR
+from src.core.config import CONFIG, OUTPUT_DIR
 from src.utils.warning_suppressor import configure_torch_tf32
 
 configure_torch_tf32()

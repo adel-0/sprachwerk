@@ -11,6 +11,7 @@ from faster_whisper import WhisperModel
 from colorama import Fore, Style
 
 from src.core.config import CONFIG
+from src.core.config import get_models_dir
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class ModelManager:
     """Centralized model download and initialization manager"""
     
     def __init__(self):
-        self.models_dir = Path("models")
+        self.models_dir = Path(get_models_dir())
         self.models_dir.mkdir(parents=True, exist_ok=True)
     
     def _get_device_config(self):
