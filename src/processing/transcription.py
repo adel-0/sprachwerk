@@ -34,9 +34,6 @@ class WhisperTranscriber:
         self.no_speech_threshold = CONFIG.get('whisper_no_speech_threshold', 0.6)
         self.multilingual_segments = CONFIG.get('whisper_multilingual_segments', False)
         self.word_timestamps = CONFIG.get('whisper_word_timestamps', True)
-        self.hallucination_silence_threshold = CONFIG.get('whisper_hallucination_silence_threshold', None)
-        self.patience = CONFIG.get('whisper_patience', None)
-        self.length_penalty = CONFIG.get('whisper_length_penalty', None)
         self.model = None
         self.is_loaded = False
         self.input_queue = queue.Queue()
@@ -113,12 +110,6 @@ class WhisperTranscriber:
             }
             if self.vad_filter:
                 transcribe_params['vad_parameters'] = dict(threshold=self.vad_threshold, min_speech_duration_ms=250, min_silence_duration_ms=100)
-            if self.hallucination_silence_threshold is not None:
-                transcribe_params['hallucination_silence_threshold'] = self.hallucination_silence_threshold
-            if self.patience is not None:
-                transcribe_params['patience'] = self.patience
-            if self.length_penalty is not None:
-                transcribe_params['length_penalty'] = self.length_penalty
             segments, info = self.model.transcribe(audio_chunk, **transcribe_params)
             words, text = self._extract_words(segments, chunk_timestamp)
             result = {

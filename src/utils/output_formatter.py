@@ -14,7 +14,6 @@ class OutputFormatter:
     def __init__(self):
         self.output_format = CONFIG['output_format']
         self.output_dir = OUTPUT_DIR
-        self.timestamp_format = CONFIG['timestamp_format']
 
     def format_transcript(self, aligned_result):
         """Format the aligned transcript as text with timestamps and summary"""

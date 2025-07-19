@@ -3,7 +3,7 @@ Speaker identification and naming system
 Creates voice signatures for speakers and enables cross-session identification
 
 ADAPTIVE THRESHOLD SYSTEM:
-This module now includes an adaptive threshold system that automatically adjusts
+This module includes an adaptive threshold system that automatically adjusts
 speaker detection sensitivity based on the expected number of speakers:
 
 1. Single Speaker (min=1, max=1):
@@ -21,7 +21,6 @@ speaker detection sensitivity based on the expected number of speakers:
    - Only merges very similar adjacent segments
 
 CONFIGURATION OPTIONS:
-- enable_adaptive_speaker_thresholds: Enable/disable the adaptive system
 - base_speaker_similarity_threshold: Base threshold for speaker matching (0.65)
 - single_speaker_similarity_boost: Additional permissiveness for single speaker (0.25)
 - single_speaker_clustering_boost: Clustering threshold reduction for single speaker (0.15)
@@ -84,7 +83,6 @@ class SpeakerIdentifier:
         self.base_clustering_threshold = CONFIG.get('diarization_clustering_threshold', 0.7)
         self.min_speech_duration = 2.0
         self.max_signature_duration = 30.0
-        self.enable_adaptive_thresholds = CONFIG.get('enable_adaptive_speaker_thresholds', True)
         self.single_speaker_similarity_boost = CONFIG.get('single_speaker_similarity_boost', 0.20)
         self.single_speaker_clustering_boost = CONFIG.get('single_speaker_clustering_boost', 0.15)
         self.similarity_threshold = self.base_similarity_threshold
@@ -453,10 +451,6 @@ class SpeakerIdentifier:
         logger.debug("Reset session speaker mapping")
 
     def update_adaptive_thresholds(self):
-        if not self.enable_adaptive_thresholds:
-            self.similarity_threshold = self.base_similarity_threshold
-            self.clustering_threshold = self.base_clustering_threshold
-            return
         from src.core.config import CONFIG
         min_speakers = CONFIG.get('min_speakers', 1)
         max_speakers = CONFIG.get('max_speakers', 2)

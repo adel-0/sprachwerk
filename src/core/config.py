@@ -42,7 +42,6 @@ class SpeakerConfig:
     """Speaker diarization configuration"""
     min_speakers: int = 1
     max_speakers: int = 2
-    enable_adaptive_speaker_thresholds: bool = False
     base_speaker_similarity_threshold: float = 0.5
     single_speaker_similarity_boost: float = 0.1
     single_speaker_clustering_boost: float = 0.1
@@ -238,8 +237,6 @@ class TranscriptionConfig:
             speaker_updates['min_speakers'] = user_settings['min_speakers']
         if 'max_speakers' in user_settings:
             speaker_updates['max_speakers'] = user_settings['max_speakers']
-        if 'enable_adaptive_speaker_thresholds' in user_settings:
-            speaker_updates['enable_adaptive_speaker_thresholds'] = user_settings['enable_adaptive_speaker_thresholds']
         if 'base_speaker_similarity_threshold' in user_settings:
             speaker_updates['base_speaker_similarity_threshold'] = user_settings['base_speaker_similarity_threshold']
         if 'single_speaker_similarity_boost' in user_settings:
@@ -305,7 +302,6 @@ class TranscriptionConfig:
         # Speaker settings
         result['min_speakers'] = self.speaker.min_speakers
         result['max_speakers'] = self.speaker.max_speakers
-        result['enable_adaptive_speaker_thresholds'] = self.speaker.enable_adaptive_speaker_thresholds
         result['base_speaker_similarity_threshold'] = self.speaker.base_speaker_similarity_threshold
         result['single_speaker_similarity_boost'] = self.speaker.single_speaker_similarity_boost
         result['single_speaker_clustering_boost'] = self.speaker.single_speaker_clustering_boost
@@ -368,7 +364,7 @@ class ConfigManager:
         self._user_settings_file = Path(os.path.join(get_settings_dir(), 'user_settings.json'))
         self._persisted_settings = {
             'whisper_language', 'whisper_multilingual_segments', 'whisper_language_constraints',
-            'min_speakers', 'max_speakers', 'enable_adaptive_speaker_thresholds',
+            'min_speakers', 'max_speakers',
             'base_speaker_similarity_threshold', 'single_speaker_similarity_boost',
             'single_speaker_clustering_boost', 'audio_device_index', 'enable_audio_preprocessing',
             'preferred_mode', 'system_audio_recording_mode', 'system_audio_device_index',
