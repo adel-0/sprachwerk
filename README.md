@@ -165,7 +165,7 @@ Enhanced features available with additional packages:
 
 - **System Audio Recording** (Windows): `PyAudioWPatch>=0.2.12`
 - **Enhanced Terminal Output**: `colorama>=0.4.0`
-- **Environment Configuration**: `python-dotenv>=1.0.0`
+
 
 ---
 

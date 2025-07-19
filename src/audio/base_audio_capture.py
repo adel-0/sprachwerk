@@ -78,10 +78,13 @@ class BaseAudioCapture(ABC):
     def save_audio(self, audio_data: np.ndarray, filename: str) -> Optional[Path]:
         try:
             import scipy.io.wavfile as wavfile
+            from src.core.config import get_outputs_dir
             config = get_typed_config()
             if not filename.endswith('.wav'):
                 filename += '.wav'
-            filepath = Path(config.output.output_directory) / filename
+            # Resolve the output directory path
+            output_dir = get_outputs_dir() if config.output.output_directory == 'outputs' else config.output.output_directory
+            filepath = Path(output_dir) / filename
             if audio_data.dtype != np.int16:
                 if audio_data.dtype in [np.float32, np.float64]:
                     audio_data = (audio_data * 32767).astype(np.int16)

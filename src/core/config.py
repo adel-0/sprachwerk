@@ -11,12 +11,7 @@ from typing import Optional, List, Dict, Any, Union
 from enum import Enum
 import sys
 
-# Load environment variables from .env file if it exists
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+
 
 
 class DiarizationBackend(Enum):
@@ -130,7 +125,7 @@ class OutputConfig:
     """Output-related configuration"""
     output_format: str = 'txt'
     timestamp_format: str = '%H:%M:%S.%f'
-    output_directory: str = get_outputs_dir()
+    output_directory: str = 'outputs'
 
 
 @dataclass(frozen=True)
@@ -451,7 +446,6 @@ OUTPUT_DIR = Path(get_outputs_dir())
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Model paths
-HF_AUTH_TOKEN = os.getenv('HF_AUTH_TOKEN')
 
 # Logging configuration
 LOGGING_CONFIG = {
