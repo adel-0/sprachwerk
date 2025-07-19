@@ -129,7 +129,7 @@ class OutputConfig:
 @dataclass(frozen=True)
 class UserPreferencesConfig:
     """User preferences configuration"""
-    preferred_mode: str = 'realtime'
+    # Mode is now a runtime choice, not a persistent setting
 
 
 @dataclass(frozen=True)
@@ -277,12 +277,7 @@ class TranscriptionConfig:
         if system_audio_updates:
             updates['system_audio'] = replace(self.system_audio, **system_audio_updates)
         
-        # User preferences
-        prefs_updates = {}
-        if 'preferred_mode' in user_settings:
-            prefs_updates['preferred_mode'] = user_settings['preferred_mode']
-        if prefs_updates:
-            updates['user_preferences'] = replace(self.user_preferences, **prefs_updates)
+        # User preferences - mode is now a runtime choice, not a persistent setting
         
         return replace(self, **updates)
     
@@ -350,8 +345,7 @@ class TranscriptionConfig:
         result['output_format'] = self.output.output_format
         result['output_directory'] = self.output.output_directory
         
-        # User preferences
-        result['preferred_mode'] = self.user_preferences.preferred_mode
+        # User preferences - mode is now a runtime choice, not a persistent setting
         
         # Computed properties
         result['CHUNK_SAMPLES'] = self.chunk_samples
@@ -370,7 +364,7 @@ class ConfigManager:
             'min_speakers', 'max_speakers',
             'base_speaker_similarity_threshold', 'single_speaker_similarity_boost',
             'single_speaker_clustering_boost', 'audio_device_index', 'enable_audio_preprocessing',
-            'preferred_mode', 'system_audio_recording_mode', 'system_audio_device_index',
+            'system_audio_recording_mode', 'system_audio_device_index',
             'system_audio_mic_device_index', 'system_audio_gain', 'system_audio_mic_gain',
             'system_audio_auto_normalize', 'system_audio_target_level', 'system_audio_save_separate'
         }

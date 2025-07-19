@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.WARNING)
 import argparse
 
 from src.core.app import TranscriptionApp
-from src.core.config import set_mode, CONFIG, bulk_update
+from src.core.config import CONFIG, bulk_update
 from src.utils.cli_helpers import apply_language_setting, apply_speaker_setting
 
 def main():
@@ -87,9 +87,7 @@ Examples:
         show_audio_devices()
         return 0
     
-    # Set configuration mode based on processing mode
-    if args.mode in ['batch', 'realtime']:
-        set_mode(args.mode)
+    # Mode is now a runtime choice, not a configuration setting
     
     # Apply command-line settings
     if args.language:
