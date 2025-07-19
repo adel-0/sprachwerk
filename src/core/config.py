@@ -55,13 +55,16 @@ class SpeakerConfig:
     cluster_threshold: float = 0.3
     
     # Clustering algorithm parameters
-    clustering_algorithm: str = 'agglomerative'  # 'agglomerative' or 'dbscan'
+    clustering_algorithm: str = 'autoscan'  # 'agglomerative' or 'autoscan'
     clustering_linkage: str = 'ward'  # 'ward', 'complete', 'average', 'single'
     clustering_affinity: str = 'euclidean'  # 'euclidean', 'cosine'
     
-    # DBSCAN specific parameters
-    dbscan_eps: float = 0.5
-    dbscan_min_samples: int = 2
+    # Autoscan specific parameters
+    autoscan_k_neighbors: int = 4
+    autoscan_min_eps: float = 0.1
+    autoscan_max_eps: float = 0.9
+    autoscan_elbow_method: str = 'knee'  # 'knee', 'silhouette', 'gap'
+    autoscan_enable_speaker_constraints: bool = True
     
     # Adaptive clustering
     enable_adaptive_clustering: bool = True
