@@ -82,9 +82,6 @@ class WhisperConfig:
     condition_on_previous_text: bool = False
     compression_ratio_threshold: float = 3.0
     word_timestamps: bool = True
-    hallucination_silence_threshold: Optional[float] = None
-    patience: Optional[float] = None
-    length_penalty: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -124,7 +121,6 @@ class SystemAudioConfig:
 class OutputConfig:
     """Output-related configuration"""
     output_format: str = 'txt'
-    timestamp_format: str = '%H:%M:%S.%f'
     output_directory: str = 'outputs'
 
 
@@ -326,9 +322,6 @@ class TranscriptionConfig:
         result['whisper_condition_on_previous_text'] = self.whisper.condition_on_previous_text
         result['whisper_compression_ratio_threshold'] = self.whisper.compression_ratio_threshold
         result['whisper_word_timestamps'] = self.whisper.word_timestamps
-        result['whisper_hallucination_silence_threshold'] = self.whisper.hallucination_silence_threshold
-        result['whisper_patience'] = self.whisper.patience
-        result['whisper_length_penalty'] = self.whisper.length_penalty
         
         # Processing settings
         result['chunk_duration'] = self.processing.chunk_duration
@@ -356,7 +349,6 @@ class TranscriptionConfig:
         
         # Output settings
         result['output_format'] = self.output.output_format
-        result['timestamp_format'] = self.output.timestamp_format
         result['output_directory'] = self.output.output_directory
         
         # User preferences
