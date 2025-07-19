@@ -62,6 +62,7 @@ def setup_logging_suppressions():
         'speechbrain.utils.fetching',
         'speechbrain.utils.parameter_transfer',
         'speechbrain.utils.checkpoints',
+        'speechbrain.dataio.encoder',
     ]:
         logger = logging.getLogger(logger_name)
         logger.setLevel(logging.CRITICAL)

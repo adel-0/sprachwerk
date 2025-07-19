@@ -35,8 +35,6 @@ class ModelManager:
     def ensure_speechbrain_ecapa_download(self):
         """Download SpeechBrain ECAPA-TDNN model"""
         try:
-            print(f"{Fore.YELLOW}Downloading SpeechBrain ECAPA-TDNN model...{Style.RESET_ALL}")
-            
             model_dir = self.models_dir / "speechbrain_ecapa"
             model_dir.mkdir(parents=True, exist_ok=True)
             
@@ -46,7 +44,6 @@ class ModelManager:
                 run_opts={"device": "cpu"}
             )
             
-            print(f"{Fore.GREEN}✓ SpeechBrain ECAPA-TDNN model ready{Style.RESET_ALL}")
             return True
             
         except Exception as e:
@@ -57,8 +54,6 @@ class ModelManager:
     def ensure_whisper_model_download(self):
         """Download Whisper model"""
         try:
-            print(f"{Fore.YELLOW}Downloading Whisper model ({CONFIG['whisper_model']})...{Style.RESET_ALL}")
-            
             model_dir = self.models_dir / "whisper"
             model_dir.mkdir(parents=True, exist_ok=True)
             
@@ -71,7 +66,6 @@ class ModelManager:
                 download_root=str(model_dir)
             )
             
-            print(f"{Fore.GREEN}✓ Whisper model ready{Style.RESET_ALL}")
             return True
             
         except Exception as e:
@@ -81,16 +75,12 @@ class ModelManager:
     
     def ensure_all_models(self):
         """Download all required models"""
-        print(f"{Fore.CYAN}Initializing models...{Style.RESET_ALL}")
-        
         success = (
             self.ensure_speechbrain_ecapa_download() and 
             self.ensure_whisper_model_download()
         )
         
-        if success:
-            print(f"{Fore.GREEN}✓ All models initialized successfully!{Style.RESET_ALL}")
-        else:
+        if not success:
             print(f"{Fore.RED}✗ Some models failed to initialize{Style.RESET_ALL}")
         
         return success 

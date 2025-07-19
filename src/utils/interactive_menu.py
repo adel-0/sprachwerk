@@ -38,7 +38,6 @@ class InteractiveMenu:
         self.speaker_manager = SpeakerManager()
 
     def run(self):
-        self._show_welcome()
         while True:
             self._show_quick_start_menu()
             choice = prompt_choice(
@@ -65,15 +64,9 @@ class InteractiveMenu:
             elif choice == '4':
                 self._comprehensive_settings_menu()
 
-    def _show_welcome(self):
-        print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🎙️  SPRACHWERK - INTERACTIVE CONFIGURATION{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Configure your transcription settings before starting{Style.RESET_ALL}")
-
     def _show_quick_start_menu(self):
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🚀 START MENU{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         self._display_current_settings()
         print(f"\n{Fore.YELLOW}Available Options:{Style.RESET_ALL}")
@@ -130,7 +123,7 @@ class InteractiveMenu:
 
     def _speaker_management_menu(self):
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🎭 SPEAKER MANAGEMENT{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         try:
             self.speaker_manager.run_speaker_management_menu()
@@ -203,20 +196,20 @@ class InteractiveMenu:
     def _language_selection_menu(self):
         from src.utils.cli_helpers import get_language_preference
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🌐 LANGUAGE SELECTION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         get_language_preference()
 
     def _speaker_count_menu(self):
         from src.utils.cli_helpers import get_speaker_preference
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}👥 SPEAKER CONFIGURATION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         get_speaker_preference()
 
     def _audio_device_menu(self):
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🎤 AUDIO DEVICE SELECTION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         device_manager = AudioDeviceManager()
         input_devices = device_manager.list_all_devices()
@@ -304,7 +297,7 @@ class InteractiveMenu:
 
     def _audio_quality_menu(self):
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🎵 AUDIO QUALITY SETTINGS{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         print(f"\n{Fore.YELLOW}Audio Processing Options:{Style.RESET_ALL}")
         print(f"  1. {Fore.RED}Raw Audio (No Processing){Style.RESET_ALL}")
@@ -329,7 +322,7 @@ class InteractiveMenu:
 
     def _audio_source_menu(self):
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🔊 AUDIO SOURCE SELECTION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         print(f"\n{Fore.YELLOW}Audio Source Options:{Style.RESET_ALL}")
         print(f"  1. {Fore.GREEN}Microphone Only{Style.RESET_ALL}")
@@ -372,7 +365,7 @@ class InteractiveMenu:
         """Advanced system audio configuration menu"""
         while True:
             print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}⚙️  ADVANCED SYSTEM AUDIO SETTINGS{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
             print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
             
             print(f"\n{Fore.YELLOW}Advanced Options:{Style.RESET_ALL}")
@@ -408,7 +401,7 @@ class InteractiveMenu:
     def _list_system_audio_devices(self):
         """List all available system audio devices"""
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}📋 SYSTEM AUDIO DEVICES{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         
         try:
@@ -452,7 +445,7 @@ class InteractiveMenu:
     def _configure_system_audio_devices(self):
         """Configure system audio device selection"""
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🎛️  CONFIGURE SYSTEM AUDIO DEVICES{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         
         try:
@@ -533,7 +526,7 @@ class InteractiveMenu:
     def _configure_audio_gains(self):
         """Configure audio gain settings"""
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🔊 CONFIGURE AUDIO GAINS{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         
         current_system_gain = CONFIG.get('system_audio_gain', 1.0)
@@ -606,7 +599,7 @@ class InteractiveMenu:
     def _configure_normalization(self):
         """Configure audio normalization settings"""
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}📊 CONFIGURE AUDIO NORMALIZATION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         
         current_enabled = CONFIG.get('enable_audio_normalization', True)
@@ -676,7 +669,7 @@ class InteractiveMenu:
     def _show_start_confirmation(self):
         """Show detailed start confirmation with current settings"""
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}🚀 READY TO START TRANSCRIPTION{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         
         # Display current settings
@@ -712,7 +705,7 @@ class InteractiveMenu:
         """Settings menu with all configuration options"""
         while True:
             print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}⚙️  SETTINGS MENU{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
             print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
             
             # Display current settings

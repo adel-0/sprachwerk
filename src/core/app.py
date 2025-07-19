@@ -65,13 +65,9 @@ class TranscriptionApp:
         return getattr(self.transcriber, 'is_loaded', False) and getattr(self.diarizer, 'is_loaded', False)
 
     def initialize_models(self):
-        print(f"{Fore.CYAN}Initializing models...{Style.RESET_ALL}")
         try:
-            print(f"{Fore.YELLOW}Loading Whisper model ({CONFIG['whisper_model']})...{Style.RESET_ALL}")
             self.transcriber.load_model()
-            print(f"{Fore.YELLOW}Loading speaker diarization model...{Style.RESET_ALL}")
             self.diarizer.load_model()
-            print(f"{Fore.GREEN}✓ All models loaded successfully!{Style.RESET_ALL}")
             return True
         except Exception as e:
             print(f"{Fore.RED}✗ Failed to load models: {e}{Style.RESET_ALL}")
