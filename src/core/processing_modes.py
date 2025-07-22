@@ -74,7 +74,7 @@ class ProcessingMode(ABC):
             return False
 
     def _save_audio_recording(self, audio_data, filename_base, audio_capture):
-        if not audio_data:
+        if audio_data is None or (hasattr(audio_data, 'size') and audio_data.size == 0):
             print(f"{Fore.YELLOW}⚠ No audio data to save{Style.RESET_ALL}")
             return None
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -236,6 +236,8 @@ class RealTimeProcessingMode(ProcessingMode):
         super().__init__(transcriber, diarizer, aligner, formatter)
         self.session_file = None
         self.input_thread = None
+        self.last_chunk_words = []  # Buffer for sliding window correction
+        self.overlap_window_sec = 1.0  # Overlap window in seconds
 
     def run(self, audio_capture, system_audio_capture):
         print(f"{Fore.CYAN}Starting Real-time Mode{Style.RESET_ALL}")
@@ -349,8 +351,46 @@ class RealTimeProcessingMode(ProcessingMode):
             transcription_result = transcriptions.pop(timestamp)
             diarization_result = diarizations.pop(timestamp)
             audio_chunk = audio_chunks.pop(timestamp, None)
+
+            # Sliding window correction logic
+            words = transcription_result.get('words', [])
+            if self.last_chunk_words and words:
+                # Find overlap region (by time)
+                overlap_start = words[0]['start']
+                overlap_end = overlap_start + self.overlap_window_sec
+                # Get words in overlap from last chunk
+                prev_overlap = [w for w in self.last_chunk_words if w['end'] > overlap_start and w['start'] < overlap_end]
+                curr_overlap = [w for w in words if w['end'] > overlap_start and w['start'] < overlap_end]
+                # If both have overlap, compare and correct
+                if prev_overlap and curr_overlap:
+                    # Simple correction: if word text differs, prefer the new chunk's word
+                    corrected_words = []
+                    prev_idx = 0
+                    for w in curr_overlap:
+                        if prev_idx < len(prev_overlap):
+                            prev_word = prev_overlap[prev_idx]
+                            if w['word'] != prev_word['word']:
+                                # Replace previous word with new one
+                                prev_overlap[prev_idx] = w
+                        prev_idx += 1
+                    # Rebuild last_chunk_words with corrected overlap
+                    # Remove old overlap, append corrected overlap, then append new non-overlap words
+                    non_overlap = [w for w in self.last_chunk_words if w['end'] <= overlap_start]
+                    self.last_chunk_words = non_overlap + prev_overlap
+                    # Add new words after overlap
+                    post_overlap = [w for w in words if w['start'] >= overlap_end]
+                    self.last_chunk_words += post_overlap
+                else:
+                    # No overlap, just append
+                    self.last_chunk_words += words
+            else:
+                self.last_chunk_words += words
+
+            # Use corrected words for alignment
+            corrected_transcription = dict(transcription_result)
+            corrected_transcription['words'] = self.last_chunk_words.copy()
             aligned_result = self.aligner.align_transcription_with_speakers(
-                transcription_result, diarization_result, audio_chunk
+                corrected_transcription, diarization_result, audio_chunk
             )
             self._output_real_time_result(aligned_result, timestamp)
 

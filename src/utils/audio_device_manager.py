@@ -7,6 +7,7 @@ import pyaudiowpatch as pyaudio
 import numpy as np
 import logging
 from typing import List, Dict, Optional, Tuple
+import sounddevice as sd
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +274,56 @@ class AudioDeviceManager:
         """Automatically select the best working device"""
         best_device = self.find_best_device()
         return best_device['index'] if best_device else None
+    
+    def auto_select_output_device(self) -> Optional[int]:
+        """Automatically select the best available output device and set sd.default.device[1]."""
+        try:
+            devices = sd.query_devices()
+            for i, device in enumerate(devices):
+                if device['max_output_channels'] > 0:
+                    sd.default.device = (sd.default.device[0], i)
+                    logger.info(f"Auto-selected output device: [{i}] {device['name']}")
+                    return i
+            logger.warning("No output device found")
+        except Exception as e:
+            logger.error(f"Error auto-selecting output device: {e}")
+        return None
+    
+    def auto_select_default_output_loopback(self) -> Optional[Dict]:
+        """Auto-select the loopback device corresponding to the current default output device (Windows WASAPI)."""
+        import sounddevice as sd
+        try:
+            default_output = sd.query_devices(None, 'output')
+            output_name = default_output['name'].lower()
+            # Remove common suffixes/prefixes for robust matching
+            def clean(name):
+                name = name.lower()
+                for suffix in [" (loopback)", " (wasapi)", " (windows wasapi)"]:
+                    name = name.replace(suffix, "")
+                return name.strip()
+            cleaned_output = clean(output_name)
+            best_match = None
+            best_score = 0
+            for i, device in enumerate(sd.query_devices()):
+                if device['max_input_channels'] > 0 and 'loopback' in device['name'].lower():
+                    cleaned_loopback = clean(device['name'])
+                    # Heuristic: prefer exact, then partial, then any loopback
+                    if cleaned_output == cleaned_loopback:
+                        return {**device, 'index': i}
+                    if cleaned_output in cleaned_loopback or cleaned_loopback in cleaned_output:
+                        score = min(len(cleaned_output), len(cleaned_loopback))
+                        if score > best_score:
+                            best_score = score
+                            best_match = {**device, 'index': i}
+            if best_match:
+                return best_match
+            # Fallback: return any loopback device
+            for i, device in enumerate(sd.query_devices()):
+                if device['max_input_channels'] > 0 and 'loopback' in device['name'].lower():
+                    return {**device, 'index': i}
+        except Exception as e:
+            logger.error(f"Error auto-selecting default output loopback: {e}")
+        return None
     
     def print_device_list(self):
         """Print a formatted list of all available devices"""

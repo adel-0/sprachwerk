@@ -134,7 +134,11 @@ class AudioCapture(BaseAudioCapture):
             self.audio_buffer = self.audio_buffer[samples_to_remove:]
             
             try:
-                self.audio_queue.put((chunk, time.time()), block=False)
+                if self.recording_start_time is not None:
+                    chunk_timestamp = time.time() - self.recording_start_time
+                else:
+                    chunk_timestamp = 0.0
+                self.audio_queue.put((chunk, chunk_timestamp), block=False)
             except queue.Full:
                 logger.warning("Audio queue full, dropping chunk")
     

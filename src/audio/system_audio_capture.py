@@ -63,10 +63,16 @@ class SystemAudioCapture(BaseAudioCapture):
                     return device
             logger.warning(f"Device index {device_index} not found or has no input channels")
             return None
-        
         # Auto-detect best device
-        device = (self.device_manager.get_best_loopback_device() if device_type == 'loopback' 
-                 else self.device_manager.get_best_microphone_device())
+        if device_type == 'loopback':
+            device = self.device_manager.auto_select_default_output_loopback()
+            if device:
+                logger.info(f"Auto-selected loopback device for default output: [{device['index']}] {device['name']}")
+            else:
+                logger.warning("No loopback device found for default output; falling back to best loopback device.")
+                device = self.device_manager.get_best_loopback_device()
+        else:
+            device = self.device_manager.get_best_microphone_device()
         if device:
             logger.info(f"Auto-selected {device_type} device: [{device['index']}] {device['name']}")
         return device
@@ -657,7 +663,11 @@ class SystemAudioCapture(BaseAudioCapture):
 
                         # Push processed chunk for downstream real-time processing
                         try:
-                            self.audio_queue.put((mixed_audio_float_proc, current_time), block=False)
+                            if hasattr(self, 'recording_start_time') and self.recording_start_time is not None:
+                                chunk_timestamp = current_time - self.recording_start_time
+                            else:
+                                chunk_timestamp = 0.0
+                            self.audio_queue.put((mixed_audio_float_proc, chunk_timestamp), block=False)
                         except queue.Full:
                             logger.warning("Audio queue full, dropping chunk")
                 

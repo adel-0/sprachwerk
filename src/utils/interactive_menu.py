@@ -443,27 +443,18 @@ class InteractiveMenu:
                 pass
     
     def _configure_system_audio_devices(self):
-        """Configure system audio device selection"""
+        """Configure system audio device selection (loopback devices only)"""
         print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}🎙️  SPRACHWERK{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
         
         try:
-            import sounddevice as sd
+            device_manager = AudioDeviceManager()
+            loopback_devices = device_manager.get_loopback_devices()
             
-            devices = sd.query_devices()
-            output_devices = []
-            
-            for i, device in enumerate(devices):
-                if device['max_output_channels'] > 0:  # Output device
-                    output_devices.append({
-                        'index': i,
-                        'name': device['name'],
-                        'channels': device['max_output_channels']
-                    })
-            
-            if not output_devices:
-                print(f"{Fore.RED}No output devices available!{Style.RESET_ALL}")
+            if not loopback_devices:
+                print(f"{Fore.RED}No loopback (system audio) devices available!{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}💡 Ensure you have a WASAPI loopback device enabled (e.g., Stereo Mix, or use pyaudiowpatch on Windows).{Style.RESET_ALL}")
                 print(f"{Fore.GREEN}Press any key to continue...{Style.RESET_ALL}")
                 try:
                     msvcrt.getch()
@@ -471,9 +462,9 @@ class InteractiveMenu:
                     pass
                 return
             
-            print(f"\n{Fore.YELLOW}Available Output Devices:{Style.RESET_ALL}")
-            for device in output_devices:
-                print(f"  {device['index']:2d}: {Fore.WHITE}{device['name']}{Style.RESET_ALL}")
+            print(f"\n{Fore.YELLOW}Available System Audio (Loopback) Devices:{Style.RESET_ALL}")
+            for device in loopback_devices:
+                print(f"  {device['index']:2d}: {Fore.WHITE}{device['name']}{Style.RESET_ALL}  (API: {device.get('hostapi', '?')})")
             
             print(f"\n{Fore.YELLOW}Options:{Style.RESET_ALL}")
             print(f"  1. {Fore.GREEN}Auto-detect system audio device{Style.RESET_ALL}")
@@ -500,21 +491,19 @@ class InteractiveMenu:
                         
                         if device_input.isdigit():
                             device_idx = int(device_input)
-                            if any(device['index'] == device_idx for device in output_devices):
+                            if any(device['index'] == device_idx for device in loopback_devices):
                                 CONFIG['system_audio_device_index'] = device_idx
                                 save_user_setting('system_audio_device_index', device_idx)
                                 save_user_settings_to_file()
-                                device_name = next(device['name'] for device in output_devices if device['index'] == device_idx)
+                                device_name = next(device['name'] for device in loopback_devices if device['index'] == device_idx)
                                 print(f"{Fore.GREEN}✓ System audio device set to: {device_name}{Style.RESET_ALL}")
                                 break
                             else:
                                 print(f"{Fore.RED}Invalid device number. Please select from the list above.{Style.RESET_ALL}")
                         else:
                             print(f"{Fore.RED}Please enter a valid device number.{Style.RESET_ALL}")
-                            
                 except (EOFError, KeyboardInterrupt):
                     break
-                    
         except Exception as e:
             print(f"{Fore.RED}Error configuring devices: {e}{Style.RESET_ALL}")
             print(f"{Fore.GREEN}Press any key to continue...{Style.RESET_ALL}")

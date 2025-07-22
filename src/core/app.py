@@ -36,6 +36,9 @@ class TranscriptionApp:
         self.model_manager.ensure_all_models()
         self.audio_capture = AudioCapture()
         self.system_audio_capture = SystemAudioCapture()
+        # Auto-select output device at startup
+        from src.utils.audio_device_manager import AudioDeviceManager
+        AudioDeviceManager().auto_select_output_device()
         self.transcriber = WhisperTranscriber()
         self.diarizer = SpeakerDiarizer()
         self.aligner = TranscriptionAligner()
