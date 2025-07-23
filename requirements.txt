@@ -16,3 +16,5 @@ scikit-learn>=1.3.0
 
 # Output formatting and CLI
 colorama==0.4.6
+pycaw
+comtypes

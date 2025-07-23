@@ -63,16 +63,10 @@ class SystemAudioCapture(BaseAudioCapture):
                     return device
             logger.warning(f"Device index {device_index} not found or has no input channels")
             return None
+        
         # Auto-detect best device
-        if device_type == 'loopback':
-            device = self.device_manager.auto_select_default_output_loopback()
-            if device:
-                logger.info(f"Auto-selected loopback device for default output: [{device['index']}] {device['name']}")
-            else:
-                logger.warning("No loopback device found for default output; falling back to best loopback device.")
-                device = self.device_manager.get_best_loopback_device()
-        else:
-            device = self.device_manager.get_best_microphone_device()
+        device = (self.device_manager.get_best_loopback_device() if device_type == 'loopback' 
+                 else self.device_manager.get_best_microphone_device())
         if device:
             logger.info(f"Auto-selected {device_type} device: [{device['index']}] {device['name']}")
         return device
@@ -437,6 +431,14 @@ class SystemAudioCapture(BaseAudioCapture):
         
         logger.info(f"Starting real-time system audio recording in mode: {self.recording_mode}")
         
+        # Print/log device info
+        if self.system_device:
+            print(f"[SystemAudioCapture] Using system device: [{self.system_device['index']}] {self.system_device['name']} ({self.system_device.get('hostapi', '?')})")
+            logger.info(f"Using system device: [{self.system_device['index']}] {self.system_device['name']} ({self.system_device.get('hostapi', '?')})")
+        if self.mic_device:
+            print(f"[SystemAudioCapture] Using mic device: [{self.mic_device['index']}] {self.mic_device['name']} ({self.mic_device.get('hostapi', '?')})")
+            logger.info(f"Using mic device: [{self.mic_device['index']}] {self.mic_device['name']} ({self.mic_device.get('hostapi', '?')})")
+        
         # Reset recording state
         self.is_recording = True
         self.audio_buffer = []
@@ -456,7 +458,7 @@ class SystemAudioCapture(BaseAudioCapture):
             if self.recording_mode in ['system', 'both'] and self.system_device:
                 system_thread = threading.Thread(
                     target=self._real_time_record_stream,
-                    args=(p, self.system_device, "system_audio"),
+                    args=(p, self.system_device, "system audio"),
                     daemon=True
                 )
                 system_thread.start()
@@ -493,33 +495,29 @@ class SystemAudioCapture(BaseAudioCapture):
     
     def stop_real_time_recording(self) -> Optional[np.ndarray]:
         """Stop real-time recording and return accumulated audio"""
-        if not self.is_recording:
-            if len(self.realtime_recording_raw) > 0:
-                logger.info(f"Returning accumulated raw recording of {len(self.realtime_recording_raw)} samples")
-                return np.array(self.realtime_recording_raw)
-            return None
-        
-        logger.info("Stopping real-time system audio recording...")
-        
         self.is_recording = False
-        
+        logger.info("Requested stop of real-time system audio recording...")
         # Wait for all recording threads to finish
         for thread in self.recording_threads:
             if thread.is_alive():
+                logger.debug(f"Joining thread {thread.name}")
                 thread.join(timeout=2.0)
-        
         self.recording_threads.clear()
-        
+        # Flush any remaining buffers (even if not full)
+        for buf_name in ["_system_audio_buffer", "_microphone_buffer"]:
+            if hasattr(self, buf_name):
+                buf = getattr(self, buf_name)
+                if buf:
+                    self.realtime_recording_raw.extend(buf)
+                    setattr(self, buf_name, [])
         # Return the complete recording
         if len(self.realtime_recording_raw) > 0:
             recording_duration = len(self.realtime_recording_raw) / self.sample_rate
             logger.info(f"Real-time recording completed: {recording_duration:.1f} seconds, {len(self.realtime_recording_raw)} samples")
-            
             recording_array = np.array(self.realtime_recording_raw)
             max_amplitude = np.max(np.abs(recording_array))
             rms_level = np.sqrt(np.mean(recording_array ** 2))
             logger.info(f"Recording quality: max={max_amplitude:.6f}, rms={rms_level:.6f}")
-            
             return recording_array
         else:
             logger.warning("No audio data accumulated during real-time recording")
@@ -538,33 +536,32 @@ class SystemAudioCapture(BaseAudioCapture):
         try:
             sample_rate = self._find_supported_sample_rate(p, device)
             channels = min(device['max_input_channels'], 2)
-            
-            stream = p.open(
-                format=pyaudio.paInt16,
-                channels=channels,
-                rate=sample_rate,
-                input=True,
-                frames_per_buffer=2048,
-                input_device_index=device['index']
-            )
-            
+            try:
+                stream = p.open(
+                    format=pyaudio.paInt16,
+                    channels=channels,
+                    rate=sample_rate,
+                    input=True,
+                    frames_per_buffer=2048,
+                    input_device_index=device['index']
+                )
+            except Exception as e:
+                logger.error(f"Could not open stream for {stream_name}: {e}")
+                print(f"[SystemAudioCapture] ERROR: Could not open stream for {stream_name}: {e}")
+                return
             logger.info(f"Started real-time recording for {stream_name} at {sample_rate}Hz")
-            
             # Initialize buffer for this stream
-            buffer_attr = f'_{stream_name}_buffer'
+            buffer_attr = f'_{stream_name.replace(" ", "_")}_buffer'  # e.g. _system_audio_buffer
             setattr(self, buffer_attr, [])
-            
             # Record continuously until stopped
             while self.is_recording:
                 try:
                     data = stream.read(2048, exception_on_overflow=False)
                     if data:
                         audio_data = np.frombuffer(data, dtype=np.int16)
-                        
                         # Convert to mono if stereo
                         if channels > 1:
                             audio_data = audio_data.reshape(-1, channels).mean(axis=1).astype(np.int16)
-
                         # Resample to target rate if needed
                         if sample_rate != self.sample_rate:
                             try:
@@ -572,15 +569,12 @@ class SystemAudioCapture(BaseAudioCapture):
                                 sample_rate = self.sample_rate
                             except Exception as e:
                                 logger.error(f"Resampling failed in real-time stream ({stream_name}): {e}")
- 
                         # Store raw data for this stream
                         getattr(self, buffer_attr).extend(audio_data)
-                        
                 except Exception as e:
                     if self.is_recording:
                         logger.error(f"Error reading from {stream_name}: {e}")
                     break
-                    
         except Exception as e:
             logger.error(f"Error in real-time recording for {stream_name}: {e}")
         finally:
@@ -663,11 +657,7 @@ class SystemAudioCapture(BaseAudioCapture):
 
                         # Push processed chunk for downstream real-time processing
                         try:
-                            if hasattr(self, 'recording_start_time') and self.recording_start_time is not None:
-                                chunk_timestamp = current_time - self.recording_start_time
-                            else:
-                                chunk_timestamp = 0.0
-                            self.audio_queue.put((mixed_audio_float_proc, chunk_timestamp), block=False)
+                            self.audio_queue.put((mixed_audio_float_proc, current_time), block=False)
                         except queue.Full:
                             logger.warning("Audio queue full, dropping chunk")
                 

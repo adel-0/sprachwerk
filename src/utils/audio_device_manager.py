@@ -7,7 +7,13 @@ import pyaudiowpatch as pyaudio
 import numpy as np
 import logging
 from typing import List, Dict, Optional, Tuple
-import sounddevice as sd
+import platform
+# Add pycaw import for Windows default device detection
+if platform.system() == "Windows":
+    try:
+        from pycaw.pycaw import AudioUtilities
+    except ImportError:
+        AudioUtilities = None
 
 logger = logging.getLogger(__name__)
 
@@ -85,20 +91,43 @@ class AudioDeviceManager:
             logger.error(f"Error getting microphone devices: {e}")
         return devices
 
+    def get_default_output_device_name(self) -> Optional[str]:
+        """Get the name of the default Windows audio output device using pycaw."""
+        if platform.system() != "Windows" or AudioUtilities is None:
+            return None
+        try:
+            # Use GetDefaultOutputDevice and property store for friendly name
+            device = AudioUtilities.GetDefaultOutputDevice()
+            if device is not None:
+                # Get the property store and friendly name
+                props = device.Properties
+                # The property key for friendly name is 2 (see pycaw docs)
+                name = props.get('FriendlyName', None)
+                if not name:
+                    # Try the fallback property key
+                    name = props.get(2, None)
+                if name:
+                    return str(name)
+        except Exception as e:
+            logger.error(f"Error getting default output device name: {e}")
+        return None
+
     def get_best_loopback_device(self) -> Optional[Dict]:
-        """Get the best loopback device for system audio recording (prefer WASAPI)"""
+        """Get the best loopback device for system audio recording (prefer WASAPI, match default output if possible)"""
         best = None
+        default_name = self.get_default_output_device_name()
         try:
             p = pyaudio.PyAudio()
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
                 if device['maxInputChannels'] > 0 and self._is_loopback(device['name']):
                     info = self._get_device_info(i, p)
-                    if info['hostapi'] == 'Windows WASAPI':
-                        logger.info(f"Found WASAPI loopback device: [{i}] {device['name']}")
+                    # Try to match the default output device name
+                    if default_name and default_name.lower() in device['name'].lower():
+                        logger.info(f"Matched default output device for loopback: [{i}] {device['name']}")
                         p.terminate()
                         return info
-                    if not best:
+                    if info['hostapi'] == 'Windows WASAPI' and not best:
                         best = info
             p.terminate()
         except Exception as e:
@@ -274,56 +303,6 @@ class AudioDeviceManager:
         """Automatically select the best working device"""
         best_device = self.find_best_device()
         return best_device['index'] if best_device else None
-    
-    def auto_select_output_device(self) -> Optional[int]:
-        """Automatically select the best available output device and set sd.default.device[1]."""
-        try:
-            devices = sd.query_devices()
-            for i, device in enumerate(devices):
-                if device['max_output_channels'] > 0:
-                    sd.default.device = (sd.default.device[0], i)
-                    logger.info(f"Auto-selected output device: [{i}] {device['name']}")
-                    return i
-            logger.warning("No output device found")
-        except Exception as e:
-            logger.error(f"Error auto-selecting output device: {e}")
-        return None
-    
-    def auto_select_default_output_loopback(self) -> Optional[Dict]:
-        """Auto-select the loopback device corresponding to the current default output device (Windows WASAPI)."""
-        import sounddevice as sd
-        try:
-            default_output = sd.query_devices(None, 'output')
-            output_name = default_output['name'].lower()
-            # Remove common suffixes/prefixes for robust matching
-            def clean(name):
-                name = name.lower()
-                for suffix in [" (loopback)", " (wasapi)", " (windows wasapi)"]:
-                    name = name.replace(suffix, "")
-                return name.strip()
-            cleaned_output = clean(output_name)
-            best_match = None
-            best_score = 0
-            for i, device in enumerate(sd.query_devices()):
-                if device['max_input_channels'] > 0 and 'loopback' in device['name'].lower():
-                    cleaned_loopback = clean(device['name'])
-                    # Heuristic: prefer exact, then partial, then any loopback
-                    if cleaned_output == cleaned_loopback:
-                        return {**device, 'index': i}
-                    if cleaned_output in cleaned_loopback or cleaned_loopback in cleaned_output:
-                        score = min(len(cleaned_output), len(cleaned_loopback))
-                        if score > best_score:
-                            best_score = score
-                            best_match = {**device, 'index': i}
-            if best_match:
-                return best_match
-            # Fallback: return any loopback device
-            for i, device in enumerate(sd.query_devices()):
-                if device['max_input_channels'] > 0 and 'loopback' in device['name'].lower():
-                    return {**device, 'index': i}
-        except Exception as e:
-            logger.error(f"Error auto-selecting default output loopback: {e}")
-        return None
     
     def print_device_list(self):
         """Print a formatted list of all available devices"""

@@ -134,11 +134,7 @@ class AudioCapture(BaseAudioCapture):
             self.audio_buffer = self.audio_buffer[samples_to_remove:]
             
             try:
-                if self.recording_start_time is not None:
-                    chunk_timestamp = time.time() - self.recording_start_time
-                else:
-                    chunk_timestamp = 0.0
-                self.audio_queue.put((chunk, chunk_timestamp), block=False)
+                self.audio_queue.put((chunk, time.time()), block=False)
             except queue.Full:
                 logger.warning("Audio queue full, dropping chunk")
     
@@ -177,34 +173,31 @@ class AudioCapture(BaseAudioCapture):
     
     def stop_real_time_recording(self):
         """Stop real-time audio recording"""
-        if not self.is_recording:
-            return np.array(self.realtime_recording) if self.realtime_recording else None
-        
-        # Stop stream
-        if hasattr(self, 'stream'):
-            self.stream.stop()
-            self.stream.close()
-            time.sleep(0.1)  # Brief delay for final processing
-        
         self.is_recording = False
-        
+        logger.info("Requested stop of real-time microphone recording...")
+        # Stop stream
+        if hasattr(self, 'stream') and self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception as e:
+                logger.error(f"Error stopping stream: {e}")
+            time.sleep(0.1)  # Brief delay for final processing
         # Add remaining buffer to recording
         if self.audio_buffer:
             remaining_chunk = np.array(self.audio_buffer)
             self.realtime_recording.extend(remaining_chunk)
             self.realtime_recording_raw.extend(remaining_chunk)
-            
             try:
                 self.audio_queue.put((remaining_chunk, time.time()), block=False)
             except queue.Full:
                 pass
-        
+            self.audio_buffer = []
         # Return recording
         if self.realtime_recording:
             recording_duration = len(self.realtime_recording) / self.sample_rate
             logger.info(f"Recording completed: {recording_duration:.1f} seconds")
             return np.array(self.realtime_recording)
-        
         logger.warning("No audio data recorded")
         return None
     

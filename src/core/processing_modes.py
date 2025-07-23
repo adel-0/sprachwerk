@@ -74,7 +74,7 @@ class ProcessingMode(ABC):
             return False
 
     def _save_audio_recording(self, audio_data, filename_base, audio_capture):
-        if audio_data is None or (hasattr(audio_data, 'size') and audio_data.size == 0):
+        if not audio_data:
             print(f"{Fore.YELLOW}⚠ No audio data to save{Style.RESET_ALL}")
             return None
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -247,27 +247,40 @@ class RealTimeProcessingMode(ProcessingMode):
             print(f"{Fore.RED}✗ Audio setup failed. Unable to start real-time transcription.{Style.RESET_ALL}")
             return False
         self._initialize_session()
+        capture = self._get_audio_capture(audio_capture, system_audio_capture)
         try:
             self._start_processing_components()
             source_desc = self._get_source_description()
             print(f"{Fore.GREEN}Recording started! Capturing {source_desc}...{Style.RESET_ALL}")
-            capture = self._get_audio_capture(audio_capture, system_audio_capture)
             capture.start_real_time_recording()
             self.is_running = True
             self.input_thread = threading.Thread(target=self._monitor_input, daemon=True)
             self.input_thread.start()
             self._real_time_processing_loop(capture)
         except KeyboardInterrupt:
-            print(f"\n{Fore.YELLOW}Stopping recording...{Style.RESET_ALL}")
+            print(f"\n{Fore.YELLOW}Stopping recording (KeyboardInterrupt)...{Style.RESET_ALL}")
+            self.stop_requested = True
+            self.is_running = False
         except Exception as e:
             print(f"\n{Fore.RED}Error in real-time mode: {e}{Style.RESET_ALL}")
             logger.error(f"Real-time mode error: {e}")
+            self.stop_requested = True
+            self.is_running = False
         finally:
-            capture = self._get_audio_capture(audio_capture, system_audio_capture)
+            # Always stop recording and join input thread
+            print(f"{Fore.YELLOW}Finalizing and saving output...{Style.RESET_ALL}")
             complete_recording = capture.stop_real_time_recording()
             self._stop_processing_components()
-            self._save_audio_recording(complete_recording, "realtime_recording", capture)
-            print(f"{Fore.GREEN}✓ Real-time session completed. Check outputs folder for transcript.{Style.RESET_ALL}")
+            if self.input_thread and self.input_thread.is_alive():
+                try:
+                    self.input_thread.join(timeout=2.0)
+                except Exception:
+                    pass
+            saved_path = self._save_audio_recording(complete_recording, "realtime_recording", capture)
+            if saved_path:
+                print(f"{Fore.GREEN}✓ Real-time session completed. Check outputs folder for transcript and audio.{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}✗ No audio was saved. Please check your input devices and try again.{Style.RESET_ALL}")
             return True
 
     def _initialize_session(self):
