@@ -74,7 +74,7 @@ class ProcessingMode(ABC):
             return False
 
     def _save_audio_recording(self, audio_data, filename_base, audio_capture):
-        if not audio_data:
+        if audio_data is None or (hasattr(audio_data, 'size') and audio_data.size == 0):
             print(f"{Fore.YELLOW}⚠ No audio data to save{Style.RESET_ALL}")
             return None
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -218,7 +218,7 @@ class BatchProcessingMode(ProcessingMode):
             print(f"{Fore.GREEN}Recording started! Capturing {source_desc} for {duration} seconds...{Style.RESET_ALL}")
             capture = self._get_audio_capture(audio_capture, system_audio_capture)
             audio_data = capture.record_batch(duration)
-            if not audio_data or (hasattr(audio_data, 'size') and audio_data.size == 0):
+            if audio_data is None or (hasattr(audio_data, 'size') and audio_data.size == 0):
                 print(f"{Fore.RED}✗ No audio data recorded{Style.RESET_ALL}")
                 return False
             temp_audio_file = self._save_audio_recording(audio_data, "batch_recording", capture)

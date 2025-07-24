@@ -87,8 +87,11 @@ class SystemAudioCapture(BaseAudioCapture):
         if mode in ['system', 'both']:
             self.system_device = self.get_recording_device(system_device_index)
             if not self.system_device:
-                logger.error("Failed to get system audio device")
-                return False
+                logger.info("Configured system audio device not found. Attempting auto-selection.")
+                self.system_device = self.get_recording_device(None)
+                if not self.system_device:
+                    logger.error("No available system audio device found. Please check your audio device connections.")
+                    return False
         
         if mode in ['mic', 'both']:
             self.mic_device = self.get_microphone_device(mic_device_index)
