@@ -18,15 +18,22 @@ class AudioCapture(BaseAudioCapture):
     def __init__(self):
         super().__init__()
         
-        # AudioCapture-specific configuration
-        self.chunk_duration = CONFIG['chunk_duration']
-        self.overlap_duration = CONFIG['overlap_duration']
-        self.buffer_size = CONFIG['buffer_size']
-        
         # For real-time recording accumulation
         self.realtime_recording = []
         self.realtime_recording_raw = []
         self.recording_start_time = None
+
+    def _get_chunk_duration(self):
+        """Get current chunk duration setting dynamically"""
+        return CONFIG['chunk_duration']
+    
+    def _get_overlap_duration(self):
+        """Get current overlap duration setting dynamically"""
+        return CONFIG['overlap_duration']
+    
+    def _get_buffer_size(self):
+        """Get current buffer size setting dynamically"""
+        return CONFIG['buffer_size']
     
     def select_device(self, device_index=None):
         """Select audio input device"""
@@ -159,7 +166,7 @@ class AudioCapture(BaseAudioCapture):
                 callback=self._audio_callback,
                 samplerate=self.sample_rate,
                 channels=self.channels,
-                blocksize=self.buffer_size,
+                blocksize=self._get_buffer_size(),
                 dtype=np.float32,
                 device=sd.default.device[0]
             )

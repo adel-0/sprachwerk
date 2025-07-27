@@ -79,6 +79,8 @@ class SpeakerIdentifier:
         self.sample_rate = CONFIG.get('sample_rate', 48000)
         self.frame_length = int(0.025 * self.sample_rate)
         self.hop_length = int(0.010 * self.sample_rate)
+        
+        # Static configuration that doesn't change during runtime
         self.base_similarity_threshold = CONFIG.get('base_speaker_similarity_threshold', 0.75)
         self.base_clustering_threshold = CONFIG.get('diarization_clustering_threshold', 0.7)
         self.min_speech_duration = 2.0
@@ -325,7 +327,7 @@ class SpeakerIdentifier:
         return processed_turns
 
     def _merge_excess_speakers(self, speaker_mapping: Dict[str, str], speaker_segments: Dict[str, List[Dict]]) -> Dict[str, str]:
-        max_speakers = CONFIG.get('max_speakers', 2)
+        max_speakers = self._get_max_speakers()
         unique_speakers = list(set(speaker_mapping.values()))
         if len(unique_speakers) <= max_speakers:
             return speaker_mapping
@@ -451,9 +453,8 @@ class SpeakerIdentifier:
         logger.debug("Reset session speaker mapping")
 
     def update_adaptive_thresholds(self):
-        from src.core.config import CONFIG
-        min_speakers = CONFIG.get('min_speakers', 1)
-        max_speakers = CONFIG.get('max_speakers', 2)
+        min_speakers = self._get_min_speakers()
+        max_speakers = self._get_max_speakers()
         self.similarity_threshold, self.clustering_threshold = self._calculate_adaptive_thresholds(min_speakers, max_speakers)
         logger.info(f"Updated adaptive thresholds - Similarity: {self.similarity_threshold:.3f}, Clustering: {self.clustering_threshold:.3f} (for {min_speakers}-{max_speakers} speakers)")
 

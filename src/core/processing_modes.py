@@ -26,31 +26,47 @@ class ProcessingMode(ABC):
         self.formatter = formatter
         self.is_running = False
         self.stop_requested = False
-        self.audio_source_mode = CONFIG.get('system_audio_recording_mode', 'mic')
-        self.use_system_audio = self.audio_source_mode in ['system', 'both']
+
+    def _get_audio_source_mode(self):
+        """Get the current audio source mode dynamically"""
+        return CONFIG.get('system_audio_recording_mode', 'mic')
+    
+    def _get_use_system_audio(self):
+        """Get whether to use system audio dynamically"""
+        audio_source_mode = self._get_audio_source_mode()
+        return audio_source_mode in ['system', 'both']
 
     def _get_audio_capture(self, audio_capture, system_audio_capture):
-        return system_audio_capture if self.use_system_audio else audio_capture
+        use_system_audio = self._get_use_system_audio()
+        selected_capture = system_audio_capture if use_system_audio else audio_capture
+        logger.info(f"Audio capture selection: use_system_audio={use_system_audio}, selected_type={type(selected_capture).__name__}")
+        return selected_capture
 
     def _get_source_description(self):
+        audio_source_mode = self._get_audio_source_mode()
         return {
             'system': 'system audio',
             'both': 'system audio and microphone',
             'mic': 'microphone'
-        }.get(self.audio_source_mode, 'audio')
+        }.get(audio_source_mode, 'audio')
 
     def _setup_audio_capture(self, audio_capture, system_audio_capture):
-        if not self.use_system_audio:
+        use_system_audio = self._get_use_system_audio()
+        audio_source_mode = self._get_audio_source_mode()
+        logger.info(f"Setting up audio capture: use_system_audio={use_system_audio}, audio_source_mode={audio_source_mode}")
+        if not use_system_audio:
+            logger.info("Using regular AudioCapture (microphone only)")
             if not audio_capture.select_device():
                 logger.error("Failed to setup audio device")
                 return False
             logger.info("Microphone audio setup completed successfully")
             return True
         try:
+            logger.info("Using SystemAudioCapture (system audio or both)")
             system_device_index = CONFIG.get('system_audio_device_index')
             mic_device_index = CONFIG.get('system_audio_mic_device_index')
             if not system_audio_capture.set_recording_mode(
-                self.audio_source_mode, system_device_index, mic_device_index
+                audio_source_mode, system_device_index, mic_device_index
             ):
                 logger.error("Failed to setup system audio recording")
                 return False
@@ -62,7 +78,7 @@ class ProcessingMode(ABC):
                 CONFIG.get('system_audio_auto_normalize', True),
                 CONFIG.get('system_audio_target_level', 0.1)
             )
-            logger.info(f"System audio setup completed successfully (mode: {self.audio_source_mode})")
+            logger.info(f"System audio setup completed successfully (mode: {audio_source_mode})")
             return True
         except ImportError:
             logger.error("System audio recording requires pyaudiowpatch. Install with: pip install pyaudiowpatch")
@@ -79,7 +95,8 @@ class ProcessingMode(ABC):
             return None
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         try:
-            if self.use_system_audio:
+            use_system_audio = self._get_use_system_audio()
+            if use_system_audio:
                 audio_filename = f"{filename_base}_{timestamp}.wav"
                 saved_audio_path = audio_capture.save_mixed_audio(audio_data, audio_filename)
                 print(f"{Fore.GREEN}✓ System audio recording saved to: {saved_audio_path}{Style.RESET_ALL}")
@@ -243,11 +260,15 @@ class RealTimeProcessingMode(ProcessingMode):
         print(f"{Fore.CYAN}Starting Real-time Mode{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Press Ctrl+C to stop recording and save transcript{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Or type 'q' or 'quit' and press Enter to stop gracefully{Style.RESET_ALL}")
+        audio_source_mode = self._get_audio_source_mode()
+        use_system_audio = self._get_use_system_audio()
+        logger.info(f"Real-time mode: audio_source_mode={audio_source_mode}, use_system_audio={use_system_audio}")
         if not self._setup_audio_capture(audio_capture, system_audio_capture):
             print(f"{Fore.RED}✗ Audio setup failed. Unable to start real-time transcription.{Style.RESET_ALL}")
             return False
         self._initialize_session()
         capture = self._get_audio_capture(audio_capture, system_audio_capture)
+        logger.info(f"Selected capture object: {type(capture).__name__}")
         try:
             self._start_processing_components()
             source_desc = self._get_source_description()

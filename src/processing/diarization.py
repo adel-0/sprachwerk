@@ -26,14 +26,17 @@ class SpeakerDiarizer:
     def __init__(self):
         self.config = CONFIG or {}
         self.sample_rate = self.config.get('sample_rate', 48000)
-        self.min_speakers = self.config.get('min_speakers', 1)
-        self.max_speakers = self.config.get('max_speakers', 2)
+        
+        # Static configuration that doesn't change during runtime
         backend_str = self.config.get('diarization_backend', 'speechbrain')
         self.backend = DiarizationBackend.SPEECHBRAIN
         self.window_length = self.config.get('window_length', 1.5)
         self.hop_length = self.config.get('hop_length', 0.75)
         self.cluster_threshold = self.config.get('cluster_threshold', 0.3)
         self.clustering_algorithm = self.config.get('clustering_algorithm', 'agglomerative')
+        self.min_segment_duration = self.config.get('diarization_min_segment_duration', 0.5)
+        self.max_segment_duration = self.config.get('diarization_max_segment_duration', 30.0)
+        
         self.embedding_extractor = SpeakerEmbeddingExtractor()
         self.clustering = SpeakerClustering(algorithm=self.clustering_algorithm)
         self.is_loaded = False
@@ -41,9 +44,15 @@ class SpeakerDiarizer:
         self.output_queue = queue.Queue()
         self.processing_thread = None
         self.is_processing = False
-        self.min_segment_duration = self.config.get('diarization_min_segment_duration', 0.5)
-        self.max_segment_duration = self.config.get('diarization_max_segment_duration', 30.0)
         logger.info(f"Initialized SpeakerDiarizer with backend: {self.backend.value}")
+
+    def _get_min_speakers(self):
+        """Get current minimum speakers setting dynamically"""
+        return self.config.get('min_speakers', 1)
+    
+    def _get_max_speakers(self):
+        """Get current maximum speakers setting dynamically"""
+        return self.config.get('max_speakers', 2)
     
     def load_model(self):
         if self.is_loaded:
@@ -52,8 +61,8 @@ class SpeakerDiarizer:
         try:
             self.embedding_extractor.load_model()
             self.clustering.update_parameters(
-                min_speakers=self.min_speakers,
-                max_speakers=self.max_speakers,
+                min_speakers=self._get_min_speakers(),
+                max_speakers=self._get_max_speakers(),
                 cluster_threshold=self.cluster_threshold,
                 algorithm=self.clustering_algorithm
             )
@@ -64,13 +73,12 @@ class SpeakerDiarizer:
             raise
     
     def update_speaker_expectations(self, min_speakers: int, max_speakers: int):
-        self.min_speakers = min_speakers
-        self.max_speakers = max_speakers
+        # Update the clustering parameters with current dynamic values
         self.clustering.update_parameters(
-            min_speakers=min_speakers,
-            max_speakers=max_speakers
+            min_speakers=self._get_min_speakers(),
+            max_speakers=self._get_max_speakers()
         )
-        logger.info(f"Updated speaker expectations: {min_speakers}-{max_speakers} speakers")
+        logger.info(f"Updated speaker expectations: {self._get_min_speakers()}-{self._get_max_speakers()} speakers")
     
     def diarize_chunk(self, audio_chunk, chunk_timestamp=0.0):
         if not self.is_loaded:

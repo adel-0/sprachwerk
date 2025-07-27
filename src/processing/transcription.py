@@ -20,13 +20,14 @@ logger = logging.getLogger(__name__)
 
 class WhisperTranscriber:
     def __init__(self):
+        # Static configuration that doesn't change during runtime
         self.model_size = CONFIG['whisper_model']
         self.device = CONFIG['whisper_device']
         self.compute_type = CONFIG['whisper_compute_type']
         self.sample_rate = CONFIG['sample_rate']
         self.mode = CONFIG.get('whisper_mode', 'balanced')
-        self.language = CONFIG.get('whisper_language', None)
-        self.language_constraints = CONFIG.get('whisper_language_constraints', None)
+        
+        # Dynamic configuration that can change during runtime
         self.vad_filter = CONFIG.get('whisper_vad_filter', True)
         self.vad_threshold = CONFIG.get('whisper_vad_threshold', 0.5)
         self.condition_on_previous_text = CONFIG.get('whisper_condition_on_previous_text', True)
@@ -34,6 +35,7 @@ class WhisperTranscriber:
         self.no_speech_threshold = CONFIG.get('whisper_no_speech_threshold', 0.6)
         self.multilingual_segments = CONFIG.get('whisper_multilingual_segments', False)
         self.word_timestamps = CONFIG.get('whisper_word_timestamps', True)
+        
         self.model = None
         self.is_loaded = False
         self.input_queue = queue.Queue()
@@ -94,8 +96,8 @@ class WhisperTranscriber:
                 return self._empty_result(chunk_timestamp, "Very low audio levels")
             if duration < 0.5:
                 logger.warning(f"Very short audio chunk at {chunk_timestamp:.2f}s ({duration:.2f}s)")
-            language_setting = self.language if self.language and self.language.lower() != 'auto' else (None if self.multilingual_segments else self.language)
-            condition_on_previous = self.condition_on_previous_text if (self.language and self.language.lower() != 'auto') else (False if self.multilingual_segments else self.condition_on_previous_text)
+            language_setting = self._get_language_setting() if self._get_language_setting() and self._get_language_setting().lower() != 'auto' else (None if self.multilingual_segments else self._get_language_setting())
+            condition_on_previous = self.condition_on_previous_text if (self._get_language_setting() and self._get_language_setting().lower() != 'auto') else (False if self.multilingual_segments else self.condition_on_previous_text)
             transcribe_params = {
                 'beam_size': self.beam_size,
                 'word_timestamps': self.word_timestamps,
@@ -117,7 +119,7 @@ class WhisperTranscriber:
                 'words': words,
                 'language': info.language,
                 'language_probability': info.language_probability,
-                'language_constraints': self.language_constraints,
+                'language_constraints': self._get_language_constraints(),
                 'chunk_timestamp': chunk_timestamp,
                 'audio_quality': {
                     'max_amplitude': max_amplitude,
@@ -125,8 +127,8 @@ class WhisperTranscriber:
                     'duration': duration
                 }
             }
-            if self.language and info.language != self.language:
-                logger.info(f"Language mismatch at {chunk_timestamp:.2f}s: expected '{self.language}', detected '{info.language}' (confidence: {info.language_probability:.2f})")
+            if self._get_language_setting() and info.language != self._get_language_setting():
+                logger.info(f"Language mismatch at {chunk_timestamp:.2f}s: expected '{self._get_language_setting()}', detected '{info.language}' (confidence: {info.language_probability:.2f})")
             return result
         except Exception as e:
             logger.error(f"Transcription failed for chunk at {chunk_timestamp:.2f}s: {e}")
@@ -186,7 +188,7 @@ class WhisperTranscriber:
                     min_speech_duration_ms=100,
                     min_silence_duration_ms=200
                 ) if self.vad_filter else None,
-                language=self.language,
+                language=self._get_language_setting(),
                 task="transcribe",
                 temperature=self.temperature,
                 condition_on_previous_text=self.condition_on_previous_text,

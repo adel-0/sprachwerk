@@ -1,172 +1,138 @@
 # sprachwerk
 
-A real-time and batch voice transcription engine with speaker diarization, built using OpenAI's Whisper and SpeechBrain ECAPA-TDNN. Perfect for integrating speech-to-text capabilities with speaker identification into applications, services, and workflows.
+Offline speech transcription with speaker diarization using Whisper and SpeechBrain ECAPA-TDNN.
 
-## ✨ Core Features
+## Overview
 
-- **Multiple Processing Modes:**
-  - Real-time transcription with live speaker identification
-  - Batch processing for recorded audio files
-  - File processing for existing audio files (WAV, MP3, M4A, FLAC)
+sprachwerk is a Python application that transcribes audio with speaker identification. It works completely offline using local models - no API keys or internet required after initial setup.
 
-- **Advanced Audio Processing:**
-  - Enhanced audio preprocessing for distant microphones
-  - Noise reduction and audio enhancement
-  - Automatic gain control and voice activity detection
-  - Support for various audio formats and devices
+## Features
 
-- **Speaker Diarization:**
-  - Modern SpeechBrain ECAPA-TDNN embeddings for speaker identification
-  - Automatic speaker detection and identification
-  - Consistent speaker naming across sessions
-  - Support for 1-10 speakers
-  - Speaker profile management
-  - Configurable clustering algorithms (AgglomerativeClustering, DBSCAN)
+- **Real-time transcription** with live speaker identification
+- **Batch processing** for recorded audio files
+- **Speaker diarization** using SpeechBrain ECAPA-TDNN embeddings
+- **Multiple audio formats** (WAV, MP3, M4A, FLAC)
+- **Multilingual support** with automatic language detection
+- **GPU acceleration** for faster processing
 
-- **Smart Language Detection:**
-  - Automatic language detection
-  - Multilingual content support
-  - Language-specific optimization
-  - Support for 100+ languages
+## Installation
 
-- **Engine Architecture:**
-  - Modular design for easy integration
-  - Processing pipeline with clear interfaces
-  - Real-time and batch processing modes
-  - Comprehensive error handling and diagnostics
+```bash
+git clone <repository-url>
+cd sprachwerk
+pip install -r requirements.txt
+```
 
-- **Output Formats:**
-  - Real-time transcription results with timestamps
-  - Speaker-labeled transcripts in TXT format
-  - Complete audio recordings with metadata
-  - Detailed processing logs and statistics
+## Usage
 
-## 🔧 Diarization Technology
-
-sprachwerk uses modern SpeechBrain ECAPA-TDNN embeddings for speaker diarization:
-
-### SpeechBrain ECAPA-TDNN (Primary)
-- **Modern embedding-based approach** for superior accuracy
-- **Fast inference** with GPU acceleration
-- **Works completely offline** - no external API calls required
-- **No authentication required** - no HuggingFace token needed
-- **Configurable clustering algorithms** (AgglomerativeClustering, DBSCAN)
-- **Apache 2.0 license** for commercial use
-- **Real-time processing** optimized for live transcription
-
-### Configuration Options
-- Clustering algorithms: AgglomerativeClustering (default), DBSCAN
-- Adjustable window length and clustering thresholds
-- Adaptive speaker count detection
-- Custom similarity thresholds
-
-### Model Management
-- Models are automatically downloaded and cached locally
-- Run `python tools/download_speechbrain_models.py` to pre-download models
-- Models stored in `models/speechbrain_ecapa/` directory
-- No external dependencies for core functionality
-
-## 🚀 Quick Start
-
-### As an Engine
-
-1. **Installation:**
-   ```bash
-   git clone <repository-url>
-   cd sprachwerk
-   pip install -r requirements.txt
-   ```
-
-2. **Command Line Usage:**
-   ```bash
-   # Interactive mode (default)
-   python main.py
-   
-   # Batch mode - record 30 seconds then process
-   python main.py --mode batch --duration 30
-   
-   # Real-time mode
-   python main.py --mode realtime
-   
-   # Process existing audio file
-   python main.py --mode batch --file audio.wav
-   
-   # With language and speaker constraints
-   python main.py -l "en de" -s "2-3" --mode batch
-   
-   # Use specific audio device
-   python main.py -i 1 --mode realtime
-   
-   # Show available audio devices
-   python main.py --help-devices
-   ```
-
-### Interactive Application
-
-The engine includes an interactive application for direct use:
-
+### Interactive Mode (Default)
 ```bash
 python main.py
 ```
+Launches an interactive menu for configuration and mode selection.
 
-The interactive interface provides:
-- Configuration menu for audio devices and processing settings
-- Real-time visual feedback during processing
-- Session management and output organization
+### Command Line Examples
 
-## 🏗️ Engine Architecture
+```bash
+# Record 30 seconds then process
+python main.py --mode batch --duration 30
 
-The sprachwerk engine is organized into modular components:
+# Real-time transcription
+python main.py --mode realtime
 
-- **`src/audio/`** - Audio capture and preprocessing pipeline
-- **`src/processing/`** - Transcription, diarization, and alignment engines
-- **`src/utils/`** - Helper utilities and configuration management
-- **`src/core/`** - Core engine coordination and configuration
+# Process existing audio file
+python main.py --mode batch --file audio.wav
 
-## 📋 System Requirements
+# Specify language and speaker count
+python main.py -l "en" -s "2" --mode batch
 
-- Python 3.8 or higher
-- CUDA-compatible GPU (recommended for faster processing)
+# Use specific audio device
+python main.py -i 1 --mode realtime
+
+# Show available audio devices
+python main.py --help-devices
+```
+
+### Command Line Options
+
+- `--mode`: `batch`, `realtime`, or `interactive`
+- `--duration`: Recording duration in seconds (batch mode)
+- `--file`: Audio file to process (batch mode)
+- `--language`: Language code(s) or "auto" for detection
+- `--speakers`: Number of speakers or "auto" for detection
+- `--device-index`: Audio input device index
+
+## System Requirements
+
+- Python 3.8+
+- CUDA-compatible GPU (recommended)
 - 4GB+ GPU memory for optimal performance
-- Microphone access for real-time transcription (optional)
+- Microphone access (for real-time mode)
 
-## 🎯 Integration Use Cases
+## Architecture
 
-- **Business Applications:** Meeting transcription services
-- **Media Processing:** Podcast and interview analysis
-- **Research Platforms:** Audio data processing pipelines
-- **Accessibility Tools:** Real-time captioning systems
-- **Content Management:** Audio indexing and search
-- **Call Centers:** Conversation analysis and quality assurance
+```
+src/
+├── audio/          # Audio capture and preprocessing
+├── processing/     # Transcription, diarization, alignment
+├── utils/          # Helper utilities and configuration
+└── core/           # Core application logic
+```
 
-## 🔍 Processing Pipeline
+## Processing Pipeline
 
-The engine implements a sophisticated processing pipeline:
-
-1. **Audio Capture/Loading** - Multi-format audio input handling
+1. **Audio Input** - Capture from microphone or load from file
 2. **Preprocessing** - Noise reduction and audio enhancement
-3. **Transcription** - Whisper-based speech-to-text with word timestamps
-4. **Speaker Embedding** - SpeechBrain ECAPA-TDNN feature extraction
-5. **Clustering** - Advanced speaker identification and grouping
-6. **Alignment** - Precise word-to-speaker assignment
-7. **Output Generation** - Formatted results with speaker labels
+3. **Transcription** - Whisper-based speech-to-text
+4. **Speaker Embedding** - ECAPA-TDNN feature extraction
+5. **Clustering** - Speaker identification and grouping
+6. **Alignment** - Word-to-speaker assignment
+7. **Output** - Speaker-labeled transcript with timestamps
 
-## 📁 Output Management
+## Output
 
-All transcription results are organized in the `outputs/` directory:
-- Session-based transcript organization
-- Speaker-labeled text files with timestamps
-- Complete audio recordings with processing metadata
-- Detailed logs and performance statistics
+Results are saved in the `outputs/` directory:
+- Speaker-labeled transcripts in TXT format
+- Complete audio recordings
+- Processing logs and statistics
 
-## 🔧 Optional Dependencies
+## Dependencies
 
-Enhanced features available with additional packages:
+### Core
+- `faster-whisper` - Whisper transcription
+- `speechbrain` - Speaker diarization
+- `torch` - PyTorch backend
+- `sounddevice` - Audio capture
+- `librosa` - Audio processing
+- `scikit-learn` - Clustering algorithms
 
-- **System Audio Recording** (Windows): `PyAudioWPatch>=0.2.12`
-- **Enhanced Terminal Output**: `colorama>=0.4.0`
+### Optional
+- `PyAudioWPatch` - System audio recording (Windows)
+- `colorama` - Enhanced terminal output
 
+## Configuration
 
----
+Speaker diarization settings can be configured in `src/core/config.py`:
+- Clustering algorithm (AgglomerativeClustering, DBSCAN)
+- Window length and similarity thresholds
+- Speaker count detection
 
-*sprachwerk - Powering the next generation of voice-enabled applications*
+## Troubleshooting
+
+### Audio Device Issues
+```bash
+python main.py --help-devices
+```
+
+### GPU Memory Issues
+- Reduce batch size in configuration
+- Use CPU-only mode if needed
+
+### Model Download Issues
+```bash
+python tools/download_speechbrain_models.py
+```
+
+## License
+
+Apache 2.0

@@ -20,8 +20,8 @@ class SpeakerClustering:
     """
     def __init__(self, algorithm='autoscan'):
         self.algorithm = algorithm
-        self.min_speakers = CONFIG.get('min_speakers', 1)
-        self.max_speakers = CONFIG.get('max_speakers', 10)
+        
+        # Static configuration that doesn't change during runtime
         self.cluster_threshold = CONFIG.get('cluster_threshold', 0.3)
         self.linkage_method = CONFIG.get('clustering_linkage', 'ward')
         self.affinity = CONFIG.get('clustering_affinity', 'euclidean')
@@ -35,6 +35,14 @@ class SpeakerClustering:
         
         self.enable_adaptive_clustering = CONFIG.get('enable_adaptive_clustering', True)
         logger.info(f"Initialized SpeakerClustering with algorithm: {algorithm}")
+
+    def _get_min_speakers(self):
+        """Get current minimum speakers setting dynamically"""
+        return CONFIG.get('min_speakers', 1)
+    
+    def _get_max_speakers(self):
+        """Get current maximum speakers setting dynamically"""
+        return CONFIG.get('max_speakers', 10)
 
     def cluster_embeddings(self, embeddings, timestamps=None):
         """
@@ -106,8 +114,8 @@ class SpeakerClustering:
 
     def _determine_optimal_clusters(self, embeddings):
         n_samples = len(embeddings)
-        min_c = max(1, self.min_speakers)
-        max_c = min(n_samples, self.max_speakers)
+        min_c = max(1, self._get_min_speakers())
+        max_c = min(n_samples, self._get_max_speakers())
         if min_c == max_c or not self.enable_adaptive_clustering:
             return min_c
         best_score, best_n = -1, min_c
@@ -215,9 +223,9 @@ class SpeakerClustering:
     def _apply_speaker_constraints(self, eps, min_samples, n_samples):
         """Apply speaker count constraints to autoscan parameters"""
         # Adjust eps based on expected speaker count
-        if self.min_speakers == self.max_speakers:
+        if self._get_min_speakers() == self._get_max_speakers():
             # Fixed speaker count - adjust eps to encourage that number of clusters
-            target_clusters = self.min_speakers
+            target_clusters = self._get_min_speakers()
             if target_clusters == 1:
                 # Single speaker - use tighter eps
                 eps = min(eps, 0.3)
@@ -231,9 +239,9 @@ class SpeakerClustering:
         # Adjust min_samples based on data size and speaker expectations
         if n_samples < 10:
             min_samples = 2
-        elif self.max_speakers <= 2:
+        elif self._get_max_speakers() <= 2:
             min_samples = max(2, min_samples // 2)
-        elif self.max_speakers >= 5:
+        elif self._get_max_speakers() >= 5:
             min_samples = min(min_samples + 1, n_samples // 5)
         
         return eps, min_samples
@@ -273,18 +281,18 @@ class SpeakerClustering:
             return labels
         
         # If we have too many clusters, merge the smallest ones
-        if n_clusters > self.max_speakers:
+        if n_clusters > self._get_max_speakers():
             cluster_sizes = {label: np.sum(labels == label) for label in unique_labels}
             sorted_clusters = sorted(cluster_sizes.items(), key=lambda x: x[1])
             
             # Merge smallest clusters into largest ones
-            for i in range(n_clusters - self.max_speakers):
+            for i in range(n_clusters - self._get_max_speakers()):
                 smallest_cluster = sorted_clusters[i][0]
                 largest_cluster = sorted_clusters[-1][0]
                 labels[labels == smallest_cluster] = largest_cluster
         
         # If we have too few clusters and enough data, try to split
-        elif n_clusters < self.min_speakers and len(embeddings) >= self.min_speakers * 3:
+        elif n_clusters < self._get_min_speakers() and len(embeddings) >= self._get_min_speakers() * 3:
             # This is a simplified approach - in practice, you might want more sophisticated splitting
             largest_cluster = max(unique_labels, key=lambda l: np.sum(labels == l))
             largest_mask = labels == largest_cluster
