@@ -123,16 +123,3 @@ Speaker diarization settings can be configured in `src/core/config.py`:
 ```bash
 python main.py --help-devices
 ```
-
-### GPU Memory Issues
-- Reduce batch size in configuration
-- Use CPU-only mode if needed
-
-### Model Download Issues
-```bash
-python tools/download_speechbrain_models.py
-```
-
-## License
-
-Apache 2.0
