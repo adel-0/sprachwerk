@@ -38,7 +38,15 @@ class TranscriptionApp:
         self.system_audio_capture = SystemAudioCapture()
         # Auto-select output device at startup
         from src.utils.audio_device_manager import AudioDeviceManager
-        AudioDeviceManager().auto_select_device()
+        try:
+            device_manager = AudioDeviceManager()
+            selected_device = device_manager.auto_select_device()
+            if selected_device is not None:
+                logger.info(f"Auto-selected audio device: {selected_device}")
+            else:
+                logger.warning("No audio device auto-selected, will use default")
+        except Exception as e:
+            logger.warning(f"Audio device auto-selection failed: {e}, will use default")
         self.transcriber = WhisperTranscriber()
         self.diarizer = SpeakerDiarizer()
         self.aligner = TranscriptionAligner()
@@ -75,6 +83,22 @@ class TranscriptionApp:
         except Exception as e:
             print(f"{Fore.RED}✗ Failed to load models: {e}{Style.RESET_ALL}")
             logger.error(f"Model loading failed: {e}")
+            return False
+
+    def setup_audio(self):
+        """Setup audio capture devices"""
+        try:
+            # Test if audio devices are accessible
+            devices = self.audio_capture.list_audio_devices()
+            if not devices:
+                print(f"{Fore.RED}✗ No audio devices found{Style.RESET_ALL}")
+                return False
+            
+            logger.info(f"Found {len(devices)} audio devices")
+            return True
+        except Exception as e:
+            print(f"{Fore.RED}✗ Failed to setup audio: {e}{Style.RESET_ALL}")
+            logger.error(f"Audio setup failed: {e}")
             return False
 
     def run_real_time_mode(self):

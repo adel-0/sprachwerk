@@ -14,6 +14,9 @@ if platform.system() == "Windows":
         from pycaw.pycaw import AudioUtilities
     except ImportError:
         AudioUtilities = None
+    except AttributeError:
+        # Handle case where pycaw is installed but AudioUtilities is not available
+        AudioUtilities = None
 
 logger = logging.getLogger(__name__)
 
@@ -97,17 +100,18 @@ class AudioDeviceManager:
             return None
         try:
             # Use GetDefaultOutputDevice and property store for friendly name
-            device = AudioUtilities.GetDefaultOutputDevice()
-            if device is not None:
-                # Get the property store and friendly name
-                props = device.Properties
-                # The property key for friendly name is 2 (see pycaw docs)
-                name = props.get('FriendlyName', None)
-                if not name:
-                    # Try the fallback property key
-                    name = props.get(2, None)
-                if name:
-                    return str(name)
+            if hasattr(AudioUtilities, 'GetDefaultOutputDevice'):
+                device = AudioUtilities.GetDefaultOutputDevice()
+                if device is not None:
+                    # Get the property store and friendly name
+                    props = device.Properties
+                    # The property key for friendly name is 2 (see pycaw docs)
+                    name = props.get('FriendlyName', None)
+                    if not name:
+                        # Try the fallback property key
+                        name = props.get(2, None)
+                    if name:
+                        return str(name)
         except Exception as e:
             logger.error(f"Error getting default output device name: {e}")
         return None
@@ -141,6 +145,15 @@ class AudioDeviceManager:
         best = None
         try:
             p = pyaudio.PyAudio()
+            # First try to get the default input device
+            default_input = p.get_default_input_device_info()
+            if default_input and self._is_microphone(default_input['name']):
+                info = self._get_device_info(default_input['index'], p)
+                logger.info(f"Using default microphone device: [{info['index']}] {info['name']}")
+                p.terminate()
+                return info
+            
+            # Fallback to scanning for microphone devices
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
                 if device['maxInputChannels'] > 0 and self._is_microphone(device['name']):
@@ -300,9 +313,27 @@ class AudioDeviceManager:
         return None
     
     def auto_select_device(self) -> Optional[int]:
-        """Automatically select the best working device"""
-        best_device = self.find_best_device()
-        return best_device['index'] if best_device else None
+        """Automatically select the best working device without testing all devices"""
+        # First try to get the default loopback device (system audio)
+        loopback_device = self.get_best_loopback_device()
+        if loopback_device:
+            logger.info(f"Auto-selected loopback device: [{loopback_device['index']}] {loopback_device['name']}")
+            return loopback_device['index']
+        
+        # Fallback to microphone device
+        mic_device = self.get_best_microphone_device()
+        if mic_device:
+            logger.info(f"Auto-selected microphone device: [{mic_device['index']}] {mic_device['name']}")
+            return mic_device['index']
+        
+        # Last resort: get the first available input device
+        devices = self.list_all_devices()
+        if devices:
+            logger.info(f"Auto-selected first available device: [{devices[0]['index']}] {devices[0]['name']}")
+            return devices[0]['index']
+        
+        logger.warning("No audio input devices found")
+        return None
     
     def print_device_list(self):
         """Print a formatted list of all available devices"""
