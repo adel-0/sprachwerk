@@ -17,17 +17,28 @@ sprachwerk is a Python application that transcribes audio with speaker identific
 
 ## Installation
 
+This project uses [uv](https://github.com/astral-sh/uv), a fast Python package manager.
+
 ```bash
+# Install uv if you haven't already
+# On Windows (PowerShell):
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+# On Unix/macOS:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone and setup
 git clone <repository-url>
 cd sprachwerk
-pip install -r requirements.txt
+
+# Install dependencies (creates virtual environment automatically)
+uv sync
 ```
 
 ## Usage
 
 ### Interactive Mode (Default)
 ```bash
-python main.py
+uv run main.py
 ```
 Launches an interactive menu for configuration and mode selection.
 
@@ -35,22 +46,22 @@ Launches an interactive menu for configuration and mode selection.
 
 ```bash
 # Record 30 seconds then process
-python main.py --mode batch --duration 30
+uv run main.py --mode batch --duration 30
 
 # Real-time transcription
-python main.py --mode realtime
+uv run main.py --mode realtime
 
 # Process existing audio file
-python main.py --mode batch --file audio.wav
+uv run main.py --mode batch --file audio.wav
 
 # Specify language and speaker count
-python main.py -l "en" -s "2" --mode batch
+uv run main.py -l "en" -s "2" --mode batch
 
 # Use specific audio device
-python main.py -i 1 --mode realtime
+uv run main.py -i 1 --mode realtime
 
 # Show available audio devices
-python main.py --help-devices
+uv run main.py --help-devices
 ```
 
 ### Command Line Options
@@ -121,5 +132,5 @@ Speaker diarization settings can be configured in `src/core/config.py`:
 
 ### Audio Device Issues
 ```bash
-python main.py --help-devices
+uv run main.py --help-devices
 ```
